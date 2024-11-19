@@ -1,0 +1,183 @@
+{
+    "MedlineCitation": {
+        "@Status": "MEDLINE",
+        "@Owner": "NLM",
+        "PMID": {
+            "@Version": "1",
+            "#text": "1"
+        },
+        "DateCompleted": {
+            "Year": {
+                "#text": "1976"
+            },
+            "Month": {
+                "#text": "01"
+            },
+            "Day": {
+                "#text": "16"
+            }
+        },
+        "DateRevised": {
+            "Year": {
+                "#text": "2022"
+            },
+            "Month": {
+                "#text": "02"
+            },
+            "Day": {
+                "#text": "18"
+            }
+        },
+        "Article": {
+            "@PubModel": "Print",
+            "Journal": {
+                "ISSN": {
+                    "@IssnType": "Print",
+                    "#text": "0006-2944"
+                },
+                "JournalIssue": {
+                    "@CitedMedium": "Print",
+                    "Volume": {
+                        "#text": "13"
+                    },
+                    "Issue": {
+                        "#text": "2"
+                    },
+                    "PubDate": {
+                        "Year": {
+                            "#text": "1975"
+                        },
+                        "Month": {
+                            "#text": "Jun"
+                        }
+                    }
+                },
+                "Title": {
+                    "#text": "Biochemical medicine"
+                },
+                "ISOAbbreviation": {
+                    "#text": "Biochem Med"
+                }
+            },
+            "ArticleTitle": {
+                "#text": "Formate assay in body fluids: application in methanol poisoning."
+            },
+            "Pagination": {
+                "MedlinePgn": {
+                    "#text": "117-26"
+                }
+            },
+            "AuthorList": {
+                "@CompleteYN": "Y",
+                "Author": {
+                    "@ValidYN": "Y",
+                    "LastName": {
+                        "#text": "Tephly"
+                    },
+                    "ForeName": {
+                        "#text": "T R"
+                    },
+                    "Initials": {
+                        "#text": "TR"
+                    }
+                }
+            },
+            "Language": {
+                "#text": "eng"
+            },
+            "GrantList": {
+                "@CompleteYN": "Y",
+                "Grant": {
+                    "GrantID": {
+                        "#text": "MC_UU_12013/5"
+                    },
+                    "Agency": {
+                        "#text": "MRC"
+                    },
+                    "Country": {
+                        "#text": "United Kingdom"
+                    }
+                }
+            },
+            "PublicationTypeList": {
+                "PublicationType": {
+                    "@UI": "D013487",
+                    "#text": "Research Support, U.S. Gov't, P.H.S."
+                }
+            }
+        },
+        "MedlineJournalInfo": {
+            "Country": {
+                "#text": "United States"
+            },
+            "MedlineTA": {
+                "#text": "Biochem Med"
+            },
+            "NlmUniqueID": {
+                "#text": "0151424"
+            },
+            "ISSNLinking": {
+                "#text": "0006-2944"
+            }
+        },
+        "ChemicalList": {
+            "Chemical": {
+                "RegistryNumber": {
+                    "#text": "Y4S76JWI15"
+                },
+                "NameOfSubstance": {
+                    "@UI": "D000432",
+                    "#text": "Methanol"
+                }
+            }
+        },
+        "CitationSubset": {
+            "#text": "IM"
+        },
+        "MeshHeadingList": {
+            "MeshHeading": {
+                "DescriptorName": {
+                    "@UI": "D011549",
+                    "@MajorTopicYN": "N",
+                    "#text": "Pseudomonas"
+                },
+                "QualifierName": {
+                    "@UI": "Q000201",
+                    "@MajorTopicYN": "N",
+                    "#text": "enzymology"
+                }
+            }
+        }
+    },
+    "PubmedData": {
+        "History": {
+            "PubMedPubDate": {
+                "@PubStatus": "entrez",
+                "Year": {
+                    "#text": "1975"
+                },
+                "Month": {
+                    "#text": "6"
+                },
+                "Day": {
+                    "#text": "1"
+                },
+                "Hour": {
+                    "#text": "0"
+                },
+                "Minute": {
+                    "#text": "0"
+                }
+            }
+        },
+        "PublicationStatus": {
+            "#text": "ppublish"
+        },
+        "ArticleIdList": {
+            "ArticleId": {
+                "@IdType": "doi",
+                "#text": "10.1016/0006-2944(75)90147-7"
+            }
+        }
+    }
+}
