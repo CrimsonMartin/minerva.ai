@@ -1,4 +1,7 @@
 *.xml
+*.gz
+
+secrets.json
 
 node_modules/
 

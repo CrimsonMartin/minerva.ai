@@ -2,38 +2,20 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flask site</title>
     <link rel="stylesheet" href="{{url_for('static',filename='dist/css/output.css')}}">
 </head>
 
 <body>
+    <!-- Search Bar -->
+    <div class="flex justify-center items-center h-screen bg-gray-100">
+        <input type="text" placeholder="Search..."
+            class="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition duration-300">
+    </div>
 
-    <!-- Showcasing Tailwind CSS features -->
-    <div class="container mx-auto p-4">
-        <!-- Flexbox container with centered content -->
-        <div class="flex justify-center items-center h-screen bg-gray-100">
-            <div class="bg-white p-8 rounded-lg shadow-md">
-                <h2 class="text-2xl font-bold text-gray-800 mb-4">Welcome to Tailwind CSS</h2>
-                <p class="text-gray-600">This is a sample paragraph to demonstrate the power of utility-first styling.
-                </p>
-            </div>
-        </div>
-
-        <!-- Responsive grid layout -->
-        <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            <div class="bg-blue-500 p-6 rounded-lg text-white">Box 1</div>
-            <div class="bg-green-500 p-6 rounded-lg text-white">Box 2</div>
-            <div class="bg-red-500 p-6 rounded-lg text-white">Box 3</div>
-            <div class="bg-yellow-500 p-6 rounded-lg text-black">Box 4</div>
-        </div>
-
-        <!-- Button with hover effect -->
-        <button class="mt-8 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-            Click Me
-        </button>
+    <div class="container">
+        {% block content %}
+        {% endblock %}
+    </div>
 </body>
 
 </div>
