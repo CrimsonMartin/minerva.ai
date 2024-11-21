@@ -1,7 +1,5 @@
 import json
 import xml.etree.ElementTree as ET
-from elasticsearch import Elasticsearch
-from elasticsearch.helpers import bulk
 from tqdm import tqdm
 import pubmedIndexParser
 from multiprocessing import Pool
@@ -23,27 +21,6 @@ def process_file(file_name):
     
     return documents
 
-
-
-secrets = json.load(open("secrets.json"))
-
-# Ensure that the credentials in secrets.json are correct and have the necessary permissions.
-client = Elasticsearch(secrets["elasticsearch"]["host"], 
-                        api_key=secrets["elasticsearch"]["api_key"])
-
-client.options()
-response = client.info()
-# print("Elasticsearch Info:", response)  # Check Elasticsearch connection and version info.
-
-
-# Define the index name
-index_name = "pubmed-articles"
-
-# Check if the index exists and create it if not
-if not client.indices.exists(index=index_name):
-    client.indices.create(index=index_name)
-    
-    
 
 
 
