@@ -30,6 +30,14 @@ def main(argv: list[str] | None = None) -> int:
     research.add_argument("--input", action="append", default=[], metavar="FILE",
                           help="local .pdf/.docx/.txt/.md to ingest as the research "
                                "base (repeatable); its ideas seed the frontier")
+    fresh_or_resume = research.add_mutually_exclusive_group()
+    fresh_or_resume.add_argument("--resume", action="store_true",
+                                 help="continue the most recent run for this topic and "
+                                      "mode: its frontier, notebook, and findings pick "
+                                      "up where they left off")
+    fresh_or_resume.add_argument("--new", action="store_true",
+                                 help="always start a fresh run, even when this topic "
+                                      "already has a run directory (a duplicate)")
 
     ingest = sub.add_parser("ingest", help="ingest local files into the vault "
                                            "without running a research session")
@@ -51,8 +59,9 @@ def main(argv: list[str] | None = None) -> int:
         from pathlib import Path
 
         from .agent import run_research
+        resume = True if args.resume else False if args.new else None
         report = run_research(config, args.topic, args.mode, args.budget,
-                              inputs=[Path(p) for p in args.input])
+                              inputs=[Path(p) for p in args.input], resume=resume)
         print(f"\nreport: {report}")
         return 0
 

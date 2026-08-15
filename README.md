@@ -120,6 +120,27 @@ python -m minerva research "predator-prey oscillation models" --mode breadth --b
 python -m minerva ideas                # list the idea network by paper count
 ```
 
+### Resuming vs. duplicating a run
+
+Every run lives in its own `vault/runs/<date-topic-mode>/` directory, and
+everything a run needs to continue (frontier queue, notebook, log) reloads
+from that directory. Two flags control which directory a `research`
+command uses:
+
+```bash
+python -m minerva research "ferroptosis" --resume   # continue the most recent
+                                                    # run for this topic+mode
+python -m minerva research "ferroptosis" --new      # fresh run, even though the
+                                                    # topic duplicates an old one
+```
+
+`--resume` picks up the latest matching run wherever it left off — visited
+items stay visited, findings keep accumulating, and the report is
+re-synthesized from the combined notebook. `--new` starts from scratch in a
+fresh directory (suffixed `-2`, `-3`, … when needed) while still sharing
+the vault's idea network. Without either flag, rerunning the same topic on
+the same day implicitly resumes it; on a later day it starts a new run.
+
 ### Local files as the research base
 
 Hand the agent your own documents — a manuscript draft, a review PDF,

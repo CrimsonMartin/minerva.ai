@@ -61,6 +61,34 @@ def test_full_run_merges_shared_idea_abstract_path():
     print(f"  abstract path: merged shared idea across 111+222 (slug {slug})")
 
 
+def test_resume_and_new_run_selection():
+    def fake_search(term, retmax=20, email=""):
+        return ["111", "222"]
+
+    def fake_fetch(pmids, email=""):
+        return [PAPERS[p] for p in pmids if p in PAPERS]
+
+    for module in (pubmed, agent.pubmed):
+        module.search, module.fetch = fake_search, fake_fetch
+        module.fetch_fulltext = lambda pmid, email="": None
+
+    tmp = tempfile.mkdtemp()
+    config = _merge(DEFAULT_CONFIG, {"_root": tmp, "reflect_every": 10,
+                                     "llm": {"chat_model": "mock", "embed_model": "mock"},
+                                     "pubmed": {"full_text": False}})
+    first = agent.run_research(config, "ferroptosis", "depth", 3).parent
+    # --resume lands in the same run dir and its state carries over.
+    resumed = agent.run_research(config, "ferroptosis", "depth", 3, resume=True).parent
+    assert resumed == first, (resumed, first)
+    # --new refuses to reuse the duplicate topic's dir and gets a -2 suffix.
+    fresh = agent.run_research(config, "ferroptosis", "depth", 3, resume=False).parent
+    assert fresh != first and fresh.name == f"{first.name}-2", fresh.name
+    # A later --resume picks the most recent matching run (the -2 one).
+    latest = agent._latest_matching_run(first.parent, "ferroptosis", "depth")
+    assert latest == fresh, (latest, fresh)
+    print(f"  run selection: resume reuses {first.name}, new forks {fresh.name}")
+
+
 def test_breadth_vs_depth_scoring():
     from minerva.frontier import Frontier
     depth = Frontier(Path(tempfile.mktemp()), alpha=1.0, beta=0.15)
