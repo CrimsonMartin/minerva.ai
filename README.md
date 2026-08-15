@@ -129,6 +129,8 @@ if you ever change the embed model, start a fresh vault.
 python -m minerva research "ferroptosis in cancer therapy" --mode depth --budget 50
 python -m minerva research "predator-prey oscillation models" --mode breadth --budget 80
 python -m minerva ideas                # list the idea network by paper count
+python -m minerva graph                # render the network as an interactive
+                                       # self-contained vault/graph.html
 ```
 
 ### Resuming vs. duplicating a run

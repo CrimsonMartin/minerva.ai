@@ -42,6 +42,13 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("ideas", help="list ideas in the vault by paper count")
 
+    graph = sub.add_parser("graph", help="render the idea network as a "
+                                         "self-contained interactive HTML file")
+    graph.add_argument("-o", "--out", default="vault/graph.html",
+                       help="output path (default: vault/graph.html)")
+    graph.add_argument("--title", default="Idea Network",
+                       help="page title (default: Idea Network)")
+
     args = parser.parse_args(argv)
     config = load_config()
 
@@ -83,6 +90,19 @@ def main(argv: list[str] | None = None) -> int:
                      if tree else "")
             print(f"{file}: {doc['id']}{cached}, {len(doc['slugs'])} ideas{shape}")
         return 1 if failures else 0
+
+    if args.command == "graph":
+        from pathlib import Path
+
+        from .graph_html import render_graph_html
+        from .store import Vault
+        vault = Vault(vault_path(config))
+        if not vault.list_ideas():
+            print("(vault has no ideas yet — run a research session first)")
+            return 1
+        path = render_graph_html(vault, Path(args.out), title=args.title)
+        print(f"graph written: {path}")
+        return 0
 
     if args.command == "ideas":
         from .store import Vault
