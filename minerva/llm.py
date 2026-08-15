@@ -19,6 +19,7 @@ class LLM:
     def __init__(self, config: dict):
         llm = config["llm"]
         self.base_url = llm["base_url"].rstrip("/")
+        self.embed_base_url = (llm.get("embed_base_url") or llm["base_url"]).rstrip("/")
         self.chat_model = llm["chat_model"]
         self.embed_model = llm["embed_model"]
         self.temperature = llm["temperature"]
@@ -83,7 +84,7 @@ class LLM:
 
     def embed(self, text: str) -> list[float]:
         response = self.session.post(
-            f"{self.base_url}/embeddings",
+            f"{self.embed_base_url}/embeddings",
             json={"model": self.embed_model, "input": text},
             timeout=self.timeout,
         )

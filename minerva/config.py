@@ -14,6 +14,7 @@ DEFAULT_CONFIG = {
         "base_url": "http://localhost:1234/v1",
         "api_key": "lm-studio",
         "chat_model": "qwen/qwen3-14b",
+        "embed_base_url": "",  # optional separate endpoint for embeddings; falls back to base_url
         "embed_model": "text-embedding-nomic-embed-text-v1.5",
         "temperature": 0.2,
         "max_tokens": 3000,
@@ -48,6 +49,7 @@ ENV_OVERRIDES = {
     "MINERVA_LLM_BASE_URL": ("llm", "base_url"),
     "MINERVA_LLM_API_KEY": ("llm", "api_key"),
     "MINERVA_LLM_CHAT_MODEL": ("llm", "chat_model"),
+    "MINERVA_LLM_EMBED_BASE_URL": ("llm", "embed_base_url"),
     "MINERVA_LLM_EMBED_MODEL": ("llm", "embed_model"),
 }
 
