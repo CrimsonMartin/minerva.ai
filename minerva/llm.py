@@ -21,18 +21,23 @@ class LLM:
         self.base_url = llm["base_url"].rstrip("/")
         self.embed_base_url = (llm.get("embed_base_url") or llm["base_url"]).rstrip("/")
         self.chat_model = llm["chat_model"]
+        self.report_model = llm.get("report_model") or llm["chat_model"]
+        self.chat_extra_body = llm.get("chat_extra_body") or {}
+        self.report_extra_body = llm.get("report_extra_body") or {}
         self.embed_model = llm["embed_model"]
         self.temperature = llm["temperature"]
         self.max_tokens = llm["max_tokens"]
         self.timeout = llm["timeout_seconds"]
         self.session = requests.Session()
         self.session.headers["Authorization"] = f"Bearer {llm['api_key']}"
+        self._local_embedder = None
 
     # ------------------------------------------------------------- chat
 
-    def chat(self, system: str, user: str, response_format: dict | None = None) -> str:
+    def chat(self, system: str, user: str, response_format: dict | None = None,
+             model: str | None = None, extra_body: dict | None = None) -> str:
         body = {
-            "model": self.chat_model,
+            "model": model or self.chat_model,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "messages": [
@@ -40,6 +45,9 @@ class LLM:
                 {"role": "user", "content": user},
             ],
         }
+        # Deployment-specific fields (e.g. chat_template_kwargs); the small
+        # structured calls default to chat_extra_body, callers may override.
+        body.update(self.chat_extra_body if extra_body is None else extra_body)
         if response_format:
             body["response_format"] = response_format
         response = self.session.post(
@@ -49,8 +57,9 @@ class LLM:
             # Server rejected the format constraint — degrade one rung:
             # json_schema -> json_object -> prompt-only JSON.
             if response_format.get("type") == "json_schema":
-                return self.chat(system, user, {"type": "json_object"})
-            return self.chat(system, user)
+                return self.chat(system, user, {"type": "json_object"},
+                                 model=model, extra_body=extra_body)
+            return self.chat(system, user, model=model, extra_body=extra_body)
         if response.status_code != 200:
             raise LLMError(f"chat failed ({response.status_code}): {response.text[:500]}")
         return response.json()["choices"][0]["message"]["content"]
@@ -78,11 +87,23 @@ class LLM:
                 "Reply again with ONLY a valid JSON object, no prose."
             )
             text = self.chat(system, retry, response_format)
-            return _extract_json(text)
+            try:
+                return _extract_json(text)
+            except ValueError as exc:
+                # Surface as LLMError so callers treat it like any other
+                # failed call (skip the step), not a crash.
+                raise LLMError(f"unparseable JSON reply after retry: {exc}") from exc
 
     # -------------------------------------------------------- embeddings
 
     def embed(self, text: str) -> list[float]:
+        # "local:<hf-model-id>" runs the model in-process (no server needed);
+        # anything else goes to the OpenAI-compatible endpoint.
+        if self.embed_model.startswith("local:"):
+            if self._local_embedder is None:
+                from sentence_transformers import SentenceTransformer
+                self._local_embedder = SentenceTransformer(self.embed_model[len("local:"):])
+            return self._local_embedder.encode(text, normalize_embeddings=True).tolist()
         response = self.session.post(
             f"{self.embed_base_url}/embeddings",
             json={"model": self.embed_model, "input": text},

@@ -101,24 +101,27 @@ every run makes future runs on nearby topics warmer.
 ## Setup
 
 ```bash
-pip install -r requirements.txt        # just: requests + pypdf
-lms get qwen/qwen3-14b                 # or any chat model you like
-lms get text-embedding-nomic-embed-text-v1.5   # embedding model
-lms server start                       # OpenAI-compatible API on localhost:1234
+uv venv && uv pip install -r requirements.txt   # or plain pip install -r
 ```
 
-`lms` is [LM Studio's CLI](https://lmstudio.ai/docs/cli); you can equally
-download the models and start the server from the LM Studio app
-(Developer tab → Start Server). Use the model identifiers LM Studio
-shows — they're what the API expects.
+Two model roles, one required decision:
 
-Config defaults to LM Studio at `http://localhost:1234/v1`. To point at
-a different endpoint or model, copy `.env.example` to `.env` and set the
-`MINERVA_LLM_*` variables (real environment variables win over `.env`);
-everything else — thresholds, scoring weights, tree sizes — lives in
-`DEFAULT_CONFIG` in `minerva/config.py`. Any OpenAI-compatible server
-works — vLLM, llama.cpp, Ollama — it's just a base URL + model names.
-The vault is created on first use.
+- **Chat** — any OpenAI-compatible server (LM Studio, llama.cpp, vLLM,
+  Ollama), local or on another box. Copy `.env.example` to `.env` and set
+  `MINERVA_LLM_BASE_URL` + `MINERVA_LLM_CHAT_MODEL` to whatever your
+  server reports.
+- **Embeddings** — none needed. They run in-process by default
+  (Qwen3-Embedding-0.6B via sentence-transformers, auto-downloaded on
+  first use, fine on CPU). To use a server instead, set
+  `MINERVA_LLM_EMBED_MODEL` (and optionally
+  `MINERVA_LLM_EMBED_BASE_URL` when it's a different endpoint than chat).
+
+Real environment variables win over `.env`. Everything else —
+thresholds, scoring weights, tree sizes — lives in `DEFAULT_CONFIG` in
+`minerva/config.py`. The vault is created on first use.
+
+One caveat: embedding vectors are only comparable within one model, so
+if you ever change the embed model, start a fresh vault.
 
 ## Use
 
