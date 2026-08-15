@@ -1,7 +1,7 @@
 """A deterministic mock model: run the whole pipeline with no LLM.
 
-Set `"chat_model": "mock"` in minerva.config.json (embed model is then
-mocked too) to dry-run research sessions, tree builds, and ingestion —
+Set MINERVA_LLM_CHAT_MODEL=mock (in the environment or `.env`; the embed
+model is then mocked too) to dry-run research sessions, tree builds, and ingestion —
 useful for testing the plumbing, the vault structure, and the file
 network before spending real model time.
 
