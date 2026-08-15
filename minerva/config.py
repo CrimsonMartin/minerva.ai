@@ -39,7 +39,9 @@ DEFAULT_CONFIG = {
     },
     "vault": "vault",
     "pubmed": {
-        "email": "REDACTED@example.com",
+        # NCBI asks that E-utilities requests carry a contact address; set
+        # MINERVA_PUBMED_EMAIL (environment or .env) to yours.
+        "email": "",
         "seed_results": 20,
         "expand_results": 8,
         "full_text": True,
@@ -71,6 +73,7 @@ ENV_OVERRIDES = {
     "MINERVA_LLM_REPORT_EXTRA_BODY": ("llm", "report_extra_body"),
     "MINERVA_LLM_EMBED_BASE_URL": ("llm", "embed_base_url"),
     "MINERVA_LLM_EMBED_MODEL": ("llm", "embed_model"),
+    "MINERVA_PUBMED_EMAIL": ("pubmed", "email"),
 }
 
 
