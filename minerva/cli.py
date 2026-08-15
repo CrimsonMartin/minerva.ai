@@ -61,27 +61,28 @@ def main(argv: list[str] | None = None) -> int:
 
         from .embeddings import EmbeddingIndex
         from .ingest import IngestError, ingest_file
-        from .llm import LLM
+        from .mock import make_llm
         from .store import Vault
-        llm = LLM(config)
+        llm = make_llm(config)
         vault = Vault(vault_path(config))
         index = EmbeddingIndex(vault.root)
-        settings = config["ingest"]
         failures = 0
         for file in args.files:
             try:
                 doc = ingest_file(
                     llm, vault, index, Path(file), config["merge_threshold"],
-                    chunk_chars=settings["chunk_chars"],
-                    max_chunks=settings["max_chunks"],
-                    min_chars_per_page=settings["min_chars_per_page"],
+                    tree_config=config["tree"],
+                    min_chars_per_page=config["ingest"]["min_chars_per_page"],
                 )
             except IngestError as exc:
                 print(f"{file}: FAILED — {exc}")
                 failures += 1
                 continue
             cached = " (already in vault)" if doc["cached"] else ""
-            print(f"{file}: {doc['id']}{cached}, {len(doc['slugs'])} ideas")
+            tree = doc.get("tree")
+            shape = (f", tree depth {tree['depth']} over {tree['n_leaves']} paragraphs"
+                     if tree else "")
+            print(f"{file}: {doc['id']}{cached}, {len(doc['slugs'])} ideas{shape}")
         return 1 if failures else 0
 
     if args.command == "ideas":

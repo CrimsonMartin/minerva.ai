@@ -12,6 +12,27 @@ llama.cpp — any OpenAI-compatible endpoint) and a **files-only backend**.
 No database. The knowledge graph is a folder of `.json` + `.md` files you
 can read, grep, and open in Obsidian (graph view draws your idea network).
 
+## Long papers: recursive paper trees
+
+Papers of any length are handled by building a **tree** bottom-up:
+paragraphs are the leaves; consecutive leaves are grouped and each group
+is condensed into a summary + ideas by one LLM call; those summaries are
+grouped and condensed again; and so on up to a single root — the paper's
+"topic level". Every call sees a bounded amount of text (config
+`tree.group_chars`), so context never blows up no matter how long the
+paper is, and the number of calls grows linearly with length.
+
+Ideas are canonicalized **top-down** (root first), so a new paper enters
+the graph at the topic level and its finer ideas anchor beneath. Child
+ideas get a `part_of` edge to their parent node's idea, projecting the
+paper's own structure into the idea network. Each paper folder gets a
+`tree.json` (source of truth) and a readable `tree.md` outline.
+
+Full text comes from **PubMed Central** when a paper is open-access
+(`elink` → PMCID → JATS XML → section-aware paragraphs); otherwise the
+agent falls back to the abstract. Local files (`--input`) go through the
+same tree builder. Toggle full text with `pubmed.full_text` in config.
+
 ## The vault — the folder structure is the network
 
 ```
@@ -111,6 +132,17 @@ Watch a run live: `tail -f vault/runs/<run>/log.md` — or just open
 
 Read-only system, writable only this project dir, shared network (needed
 for localhost Qwen + PubMed).
+
+## Testing / dry-run
+
+Set `"chat_model": "mock"` in `minerva.config.json` to run the entire
+pipeline — tree building, ingestion, a full research session — with a
+deterministic mock model and no network or GPU. The offline test suite
+uses it:
+
+```bash
+python -m tests.run_all
+```
 
 ## Legacy
 

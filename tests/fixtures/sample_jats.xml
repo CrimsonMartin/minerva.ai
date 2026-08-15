@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmc-articleset>
+<article xmlns:xlink="http://www.w3.org/1999/xlink">
+  <front>
+    <article-meta>
+      <title-group><article-title>GPX4 and the control of ferroptotic cell death</article-title></title-group>
+    </article-meta>
+  </front>
+  <body>
+    <sec>
+      <title>Introduction</title>
+      <p>Ferroptosis is an iron-dependent form of regulated cell death driven by the accumulation of lipid hydroperoxides in cellular membranes. Unlike apoptosis, ferroptosis does not require caspase activation and proceeds through the peroxidation of polyunsaturated fatty acids.</p>
+      <p>The glutathione peroxidase GPX4 is the central enzymatic defense against ferroptosis, using reduced glutathione to convert lipid hydroperoxides into non-toxic lipid alcohols. Loss of GPX4 activity therefore sensitizes cells to ferroptotic death.</p>
+    </sec>
+    <sec>
+      <title>Mechanism</title>
+      <p>GPX4 depends on a selenocysteine residue in its active site, and depletion of selenium or of the glutathione pool abolishes its protective function. Small-molecule inhibitors such as RSL3 covalently bind this active site and inactivate the enzyme.</p>
+      <p>When GPX4 is inhibited, lipid peroxides propagate through membranes in an iron-catalyzed radical chain reaction, ultimately compromising membrane integrity and causing cell rupture.</p>
+      <sec>
+        <title>Iron dependence</title>
+        <p>Chelating intracellular iron with deferoxamine blocks ferroptosis even when GPX4 is fully inhibited, demonstrating that catalytic iron is required for the lethal lipid peroxidation.</p>
+      </sec>
+    </sec>
+    <sec>
+      <title>Therapeutic implications</title>
+      <p>Certain therapy-resistant cancer cells, including drug-tolerant persister cells, adopt a mesenchymal state that renders them acutely dependent on GPX4. Pharmacological induction of ferroptosis selectively eliminates these otherwise refractory populations.</p>
+    </sec>
+  </body>
+</article>
+</pmc-articleset>

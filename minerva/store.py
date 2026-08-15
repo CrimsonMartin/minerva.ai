@@ -132,7 +132,15 @@ class Vault:
         lines.append(" · ".join(meta) + "\n")
         if paper.get("mesh"):
             lines.append(f"**MeSH:** {', '.join(paper['mesh'])}\n")
-        if paper.get("abstract"):
+        directory = self.papers_dir / paper["pmid"]
+        extras = [f"[{name.removesuffix('.md')}]({name})"
+                  for name in ("tree.md", "fulltext.md") if (directory / name).exists()]
+        if extras:
+            lines.append(" · ".join(extras) + "\n")
+        if paper.get("summary"):
+            lines.append("## Summary\n")
+            lines.append(paper["summary"] + "\n")
+        if paper.get("abstract") and paper.get("abstract") != paper.get("summary"):
             lines.append("## Abstract\n")
             lines.append(paper["abstract"] + "\n")
         if paper["ideas"]:
