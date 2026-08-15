@@ -74,6 +74,13 @@ small, single-purpose calls (extract ideas from one abstract, adjudicate
 one merge, reflect on the notebook). That keeps a local model coherent
 over a 50–200 step run.
 
+Every structured call carries a **JSON schema** (`response_format:
+json_schema`), so a capable server — LM Studio, llama.cpp, vLLM —
+constrains decoding to the exact shape the code expects and the reply
+can't be malformed or missing a key. Servers without it degrade
+gracefully: `json_schema` → `json_object` → a prompt-only JSON reply
+parsed with one repair retry.
+
 1. Seed: PubMed search for your topic → papers onto the frontier.
 2. Pop the best item, forever:
    - **paper** → fetch + cache → extract core ideas → merge into the

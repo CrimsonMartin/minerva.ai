@@ -27,7 +27,7 @@ def _sentences(text: str) -> list[str]:
 class MockLLM:
     # -------------------------------------------------------------- chat
 
-    def chat(self, system: str, user: str, json_mode: bool = False) -> str:
+    def chat(self, system: str, user: str, response_format: dict | None = None) -> str:
         if "condensing one node" in system:
             return json.dumps(self._summarize(user))
         if "Extract the CORE IDEAS" in system:
@@ -44,8 +44,8 @@ class MockLLM:
                     + "\n\n## Open questions\n\n(mock)\n\n## Sources\n(see notebook)\n")
         return "mock reply"
 
-    def chat_json(self, system: str, user: str) -> dict:
-        return json.loads(self.chat(system, user, json_mode=True))
+    def chat_json(self, system: str, user: str, schema: dict | None = None) -> dict:
+        return json.loads(self.chat(system, user))
 
     # -------------------------------------------------------- embeddings
 

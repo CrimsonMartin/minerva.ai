@@ -141,6 +141,40 @@ def test_json_repair():
     print("  JSON repair extraction OK")
 
 
+def test_structured_output_schema_and_fallback():
+    from minerva.extract import EXTRACT_SCHEMA
+    from minerva.llm import LLM
+
+    class FakeResponse:
+        def __init__(self, status, payload=""):
+            self.status_code, self.text = status, payload
+        def json(self):
+            return {"choices": [{"message": {"content": '{"key_finding": "ok", "ideas": []}'}}]}
+
+    class FakeSession:
+        def __init__(self, statuses):
+            self.statuses = list(statuses)
+            self.sent = []
+            self.headers = {}
+        def post(self, url, json, timeout):
+            self.sent.append(json.get("response_format"))
+            return FakeResponse(self.statuses.pop(0))
+
+    config = _merge(DEFAULT_CONFIG, {"llm": {"chat_model": "x", "embed_model": "x"}})
+    # Happy path: the schema is sent as a json_schema response_format.
+    llm = LLM(config)
+    llm.session = FakeSession([200])
+    assert llm.chat_json("sys", "user", EXTRACT_SCHEMA)["key_finding"] == "ok"
+    assert llm.session.sent[0]["type"] == "json_schema"
+    assert llm.session.sent[0]["json_schema"]["schema"] == EXTRACT_SCHEMA
+    # A server that rejects json_schema then json_object degrades all the way
+    # to an unconstrained call rather than failing.
+    llm.session = FakeSession([400, 400, 200])
+    assert llm.chat_json("sys", "user", EXTRACT_SCHEMA)["key_finding"] == "ok"
+    assert [s and s["type"] for s in llm.session.sent] == ["json_schema", "json_object", None]
+    print("  structured output: schema sent, fallback ladder json_schema→json_object→none")
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for test in tests:
