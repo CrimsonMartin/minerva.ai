@@ -94,11 +94,10 @@ every run makes future runs on nearby topics warmer.
 ## Setup
 
 ```bash
-pip install -r requirements.txt        # just: requests (flask etc. for the old web UI)
+pip install -r requirements.txt        # just: requests + pypdf
 lms get qwen/qwen3-14b                 # or any chat model you like
 lms get text-embedding-nomic-embed-text-v1.5   # embedding model
 lms server start                       # OpenAI-compatible API on localhost:1234
-python -m minerva init                 # writes minerva.config.json + vault/
 ```
 
 `lms` is [LM Studio's CLI](https://lmstudio.ai/docs/cli); you can equally
@@ -107,10 +106,12 @@ download the models and start the server from the LM Studio app
 shows — they're what the API expects.
 
 Config defaults to LM Studio at `http://localhost:1234/v1`. To point at
-a different endpoint or model, edit `minerva.config.json`, or copy
-`.env.example` to `.env` and set the `MINERVA_LLM_*` variables
-(environment/`.env` wins over the JSON). Any OpenAI-compatible server
+a different endpoint or model, copy `.env.example` to `.env` and set the
+`MINERVA_LLM_*` variables (real environment variables win over `.env`);
+everything else — thresholds, scoring weights, tree sizes — lives in
+`DEFAULT_CONFIG` in `minerva/config.py`. Any OpenAI-compatible server
 works — vLLM, llama.cpp, Ollama — it's just a base URL + model names.
+The vault is created on first use.
 
 ## Use
 
@@ -179,16 +180,11 @@ for localhost LM Studio + PubMed).
 
 ## Testing / dry-run
 
-Set `"chat_model": "mock"` in `minerva.config.json` to run the entire
-pipeline — tree building, ingestion, a full research session — with a
-deterministic mock model and no network or GPU. The offline test suite
-uses it:
+Set `MINERVA_LLM_CHAT_MODEL=mock` (in the environment or `.env`) to run
+the entire pipeline — tree building, ingestion, a full research session —
+with a deterministic mock model and no network or GPU. The offline test
+suite uses it:
 
 ```bash
 python -m tests.run_all
 ```
-
-## Legacy
-
-`app.py`, `createAndUploadToIndex.py` etc. are the earlier Flask +
-Elasticsearch experiment; the agent does not depend on them.

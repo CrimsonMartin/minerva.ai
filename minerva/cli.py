@@ -1,6 +1,5 @@
 """Command line interface.
 
-    python -m minerva init
     python -m minerva research "ferroptosis in cancer therapy" --mode depth --budget 50
     python -m minerva research "attention mechanisms" --mode breadth
     python -m minerva ideas
@@ -9,7 +8,7 @@
 import argparse
 import sys
 
-from .config import load_config, vault_path, write_default_config
+from .config import load_config, vault_path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -17,8 +16,6 @@ def main(argv: list[str] | None = None) -> int:
         prog="minerva", description="Local-first deep research agent over PubMed."
     )
     sub = parser.add_subparsers(dest="command", required=True)
-
-    sub.add_parser("init", help="write minerva.config.json and create the vault")
 
     research = sub.add_parser("research", help="run a research session")
     research.add_argument("topic", help="the research question or topic")
@@ -47,13 +44,6 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     config = load_config()
-
-    if args.command == "init":
-        path = write_default_config()
-        from .store import Vault
-        Vault(vault_path(config))
-        print(f"config: {path}\nvault:  {vault_path(config)}")
-        return 0
 
     if args.command == "research":
         from pathlib import Path
