@@ -80,12 +80,17 @@ def build_paper_tree(
     link_threshold: float | None = None,
     group_chars: int = 3500,
     max_paragraphs: int = 500,
+    log=None,
 ) -> dict:
     """Build the tree, canonicalize ideas root-first, write tree.json/tree.md.
+
+    `log` is an optional callable for progress lines (a tree build makes many
+    LLM calls and would otherwise be silent for minutes).
 
     Returns {"summary", "key_finding", "slugs" (root-first), "n_nodes",
     "n_leaves", "depth", "truncated"}.
     """
+    log = log or (lambda message: None)
     truncated = max(0, len(paragraphs) - max_paragraphs)
     paragraphs = paragraphs[:max_paragraphs]
 
@@ -101,7 +106,10 @@ def build_paper_tree(
     # still gets one pass so its root has a summary and ideas.
     while len(current) > 1 or (level == 1 and current and not nodes[current[0]]["summary"]):
         next_level = []
-        for group in _group(current, nodes, group_chars):
+        groups = _group(current, nodes, group_chars)
+        log(f"  tree level {level}: {len(groups)} summarize call(s) "
+            f"over {len(current)} node(s)")
+        for group in groups:
             node_id = f"n{counter}"
             counter += 1
             content = "\n\n".join(_content(nodes[child]) for child in group)
@@ -122,6 +130,8 @@ def build_paper_tree(
     # Canonicalize top-down: the root's topic-level ideas enter the global
     # graph first, then each level beneath anchors under them.
     ordered = _levels_root_first(nodes, root_id)
+    total_ideas = sum(len(nodes[node_id]["ideas"]) for node_id in ordered)
+    log(f"  canonicalizing {total_ideas} idea(s) top-down across {len(ordered)} node(s)")
     all_slugs: list[str] = []
     for node_id in ordered:
         node = nodes[node_id]

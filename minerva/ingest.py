@@ -103,6 +103,7 @@ def ingest_file(
     tree_config: dict | None = None,
     min_chars_per_page: int = 200,
     link_threshold: float | None = None,
+    log=None,
 ) -> dict:
     """Ingest one local file via a recursive paper tree.
 
@@ -139,6 +140,7 @@ def ingest_file(
         link_threshold=link_threshold,
         group_chars=tree_config.get("group_chars", 3500),
         max_paragraphs=tree_config.get("max_paragraphs", 500),
+        log=log,
     )
 
     paper = vault.load_paper(doc_id)
