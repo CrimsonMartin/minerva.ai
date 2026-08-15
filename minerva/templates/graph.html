@@ -59,9 +59,10 @@
   .chip .n { margin-left: auto; color: var(--ink-3);
     font-variant-numeric: tabular-nums; }
   #edgekey { right: 16px; bottom: 14px; color: var(--ink-3); font-size: 12px;
-    display: flex; gap: 16px; align-items: center; }
+    display: flex; gap: 10px; align-items: center; }
+  #edgekey .chip { color: inherit; gap: 6px; }
   #edgekey svg { vertical-align: -3px; }
-  #panel { top: 0; right: 0; bottom: 0; width: min(360px, 92vw);
+  #panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(360px, 92vw);
     background: var(--panel); border-left: 1px solid var(--line);
     padding: 20px; overflow-y: auto; transform: translateX(105%);
     transition: transform .22s ease; z-index: 4; }
@@ -105,8 +106,8 @@
 <div class="hud" id="edgekey">
   <span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3"
     stroke="currentColor" stroke-width="1.6"/></svg> part_of</span>
-  <span style="opacity:.55"><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3"
-    stroke="currentColor" stroke-width="1"/></svg> related_to</span>
+  <button class="chip" id="toggle-related"><svg width="26" height="6"><line x1="0" y1="3"
+    x2="26" y2="3" stroke="currentColor" stroke-width="1"/></svg> related_to</button>
   <span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3"
     stroke="currentColor" stroke-width="1.8" stroke-dasharray="4 3"/></svg> analogous_to</span>
 </div>
@@ -127,6 +128,17 @@ DATA.nodes.forEach(n => counts[n.domain] = (counts[n.domain] || 0) + 1);
 const TOP = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
   .map(e => e[0]);
 const slotOf = d => { const i = TOP.indexOf(d); return i < 0 ? 0 : i + 1; };
+
+// ---- domain anchors: ring slots, biggest domain in the middle, so same-hue
+// ideas settle into a readable region instead of dispersing ----
+const ringDomains = TOP.slice(1).concat(['__other__']);
+const anchors = new Map([[TOP[0] ?? '__other__', { x: 0, y: 0 }]]);
+ringDomains.forEach((d, i) => {
+  const a = (i / ringDomains.length) * Math.PI * 2 - Math.PI / 2;
+  anchors.set(d, { x: Math.cos(a) * 620, y: Math.sin(a) * 620 });
+});
+const domainCenter = d =>
+  anchors.get(d) ?? anchors.get('__other__') ?? { x: 0, y: 0 };
 
 const css = name => getComputedStyle(document.documentElement)
   .getPropertyValue(name).trim();
@@ -158,8 +170,9 @@ for (const e of DATA.edges) {
 }
 nodes.forEach(n => {
   n.r = 3.5 + Math.sqrt(n.deg) * 1.6 + (n.papers > 1 ? 2 : 0);
-  const gold = Math.random() * Math.PI * 2, rad = 90 + Math.random() * 320;
-  n.x = Math.cos(gold) * rad; n.y = Math.sin(gold) * rad;
+  const c = domainCenter(slotOf(n.domain) === 0 ? '__other__' : n.domain);
+  const a = Math.random() * Math.PI * 2, rad = Math.random() * 160;
+  n.x = c.x + Math.cos(a) * rad; n.y = c.y + Math.sin(a) * rad;
 });
 document.getElementById('stats').innerHTML =
   `<b>${nodes.length}</b> ideas · <b>${edges.length}</b> links · ${DATA.papers} papers`;
@@ -175,27 +188,40 @@ function tick(alpha) {
       const m = nodes[j];
       let dx = n.x - m.x, dy = n.y - m.y;
       let d2 = dx * dx + dy * dy;
-      if (d2 > 90000) continue;
+      if (d2 > 40000) continue;
       if (d2 < 1) { dx = Math.random() - .5; dy = Math.random() - .5; d2 = 1; }
-      const f = alpha * 900 / d2;
+      const f = alpha * 320 / d2;
       dx *= f; dy *= f;
       n.vx += dx; n.vy += dy; m.vx -= dx; m.vy -= dy;
     }
   }
   for (const e of edges) {
-    const k = e.rel === 'part_of' ? .06 : e.rel === 'analogous_to' ? .03 : .015;
+    // Structural edges pull hard (they make the clusters); the loose
+    // related_to mesh pulls weakly so it doesn't homogenize the layout.
+    const k = e.rel === 'part_of' ? .08 : e.rel === 'analogous_to' ? .05 : .02;
+    const rest = e.rel === 'related_to' ? 90 : 45;
     const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
-    const d = Math.hypot(dx, dy) || 1, f = alpha * k * (d - 60) / d;
+    const d = Math.hypot(dx, dy) || 1;
+    const f = alpha * k * (d - rest) / d / (1 + Math.min(e.a.deg, e.b.deg) * .05);
     e.a.vx += dx * f; e.a.vy += dy * f;
     e.b.vx -= dx * f; e.b.vy -= dy * f;
   }
+  // Domain gravity: each domain has a slot on a ring, so same-colored ideas
+  // settle into a readable region instead of dispersing through the whole field.
   for (const n of nodes) {
-    n.vx -= n.x * alpha * .012; n.vy -= n.y * alpha * .012;  // center gravity
+    const c = domainCenter(n.domain);
+    n.vx += (c.x - n.x) * alpha * .07; n.vy += (c.y - n.y) * alpha * .07;
+  }
+  for (const n of nodes) {
+    n.vx -= n.x * alpha * .006; n.vy -= n.y * alpha * .006;  // center gravity
+    // Clamp the step: explicit Euler with stiff springs diverges otherwise.
+    const speed = Math.hypot(n.vx, n.vy);
+    if (speed > 18) { n.vx *= 18 / speed; n.vy *= 18 / speed; }
     if (n !== dragNode) { n.x += n.vx; n.y += n.vy; }
     n.vx *= .6; n.vy *= .6;
   }
 }
-for (let i = 0; i < 250; i++) tick(1 - i / 300);   // warm-up before first paint
+for (let i = 0; i < 600; i++) tick(Math.max(.05, .35 * (1 - i / 600)));  // settle
 
 // ---- rendering ----
 const canvas = document.getElementById('canvas');
@@ -204,12 +230,26 @@ let view = { x: 0, y: 0, k: 1 }, dpr = 1;
 function resize() {
   dpr = devicePixelRatio || 1;
   canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
-  view.x = innerWidth / 2; view.y = innerHeight / 2;
-  const fit = Math.min(innerWidth, innerHeight);
-  view.k = Math.max(.5, fit / 1050);
+  fitView();
   draw();
 }
+// Frame the graph's actual extent, with room for the HUD chrome.
+function fitView() {
+  const pad = { l: 34, r: 34, t: 66, b: 54 };
+  const finite = nodes.filter(n => isFinite(n.x) && isFinite(n.y));
+  if (!finite.length) { view = { x: innerWidth / 2, y: innerHeight / 2, k: 1 }; return; }
+  const xs = finite.map(n => n.x), ys = finite.map(n => n.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const w = innerWidth - pad.l - pad.r, h = innerHeight - pad.t - pad.b;
+  view.k = Math.min(6, Math.max(.15,
+    Math.min(w / Math.max(x1 - x0, 1), h / Math.max(y1 - y0, 1)) * .92));
+  view.x = pad.l + w / 2 - (x0 + x1) / 2 * view.k;
+  view.y = pad.t + h / 2 - (y0 + y1) / 2 * view.k;
+}
 let selected = null, hovered = null, soloDomain = null, query = '';
+let showRelated = false;   // the loose related_to mesh is opt-in: it is 2/3 of
+                           // the edges and obscures the structural ones
 const visible = n => {
   const domOK = !soloDomain ||
     (soloDomain === '__other__' ? slotOf(n.domain) === 0 : n.domain === soloDomain);
@@ -233,6 +273,7 @@ function draw() {
   for (const e of edges) {
     const em = Math.min(emphasis(e.a), emphasis(e.b));
     const strong = selected && (e.a === selected || e.b === selected);
+    if (e.rel === 'related_to' && !showRelated && !strong) continue;
     let alpha = e.rel === 'related_to' ? .35 : .6;
     alpha *= em; if (strong) alpha = .95;
     ctx.strokeStyle = strong ? C.accent : `rgba(${C.edge},${alpha + .25})`;
@@ -256,20 +297,41 @@ function draw() {
       ctx.strokeStyle = C.surface; ctx.lineWidth = 1 / view.k; ctx.stroke();
     }
   }
-  ctx.globalAlpha = 1;
-  ctx.font = `${11 / view.k}px system-ui, sans-serif`;
-  ctx.fillStyle = C.ink2;
-  const labeled = [...nodes].sort((a, b) => b.deg - a.deg).slice(0, 14);
-  for (const n of labeled) {
+  // Labels in screen space (so they stay legible at any zoom) with simple
+  // collision rejection — a label is drawn only where it doesn't overlap one
+  // already placed, which keeps a dense graph readable.
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.font = '600 11.5px system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+  const placed = [];
+  const cands = [...nodes].sort((a, b) => b.deg - a.deg);
+  let drawn = 0;
+  for (const n of cands) {
+    if (drawn >= 26) break;
     if (emphasis(n) < .5) continue;
-    ctx.fillText(n.statement.slice(0, 42) + (n.statement.length > 42 ? '…' : ''),
-      n.x + n.r + 4 / view.k, n.y + 3 / view.k);
+    const sx = n.x * view.k + view.x, sy = n.y * view.k + view.y;
+    if (sx < 60 || sx > innerWidth - 60 || sy < 54 || sy > innerHeight - 48) continue;
+    const text = n.statement.length > 38
+      ? n.statement.slice(0, 38).trimEnd() + '…' : n.statement;
+    const w = ctx.measureText(text).width;
+    const x = sx + n.r * view.k + 5, y = sy;
+    const box = { x0: x - 2, y0: y - 8, x1: x + w + 2, y1: y + 8 };
+    if (placed.some(p => box.x0 < p.x1 && box.x1 > p.x0 &&
+                         box.y0 < p.y1 && box.y1 > p.y0)) continue;
+    if (x + w > innerWidth - 12) continue;
+    placed.push(box);
+    drawn++;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = C.surface; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+    ctx.strokeText(text, x, y);            // halo so type survives over edges
+    ctx.fillStyle = C.ink;
+    ctx.fillText(text, x, y);
   }
 }
 
 let running = 120;
 (function loop() {
-  if (running > 0) { tick(Math.min(.4, running / 300)); running--; draw(); }
+  if (running > 0) { tick(Math.min(.25, running / 500)); running--; draw(); }
   requestAnimationFrame(loop);
 })();
 const wake = n => { running = Math.max(running, n); };
@@ -386,6 +448,15 @@ legend.addEventListener('click', e => {
   }
   draw();
 });
+const relBtn = document.getElementById('toggle-related');
+relBtn.classList.add('off');
+relBtn.title = 'Show the loose related_to mesh';
+relBtn.addEventListener('click', () => {
+  showRelated = !showRelated;
+  relBtn.classList.toggle('off', !showRelated);
+  draw();
+});
+
 document.getElementById('search').addEventListener('input', e => {
   query = e.target.value.trim().toLowerCase(); draw();
 });
