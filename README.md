@@ -233,3 +233,7 @@ suite uses it:
 ```bash
 python -m tests.run_all
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE). Use it, fork it, build on it.
