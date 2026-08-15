@@ -30,6 +30,11 @@ DEFAULT_CONFIG = {
     },
     "merge_threshold": 0.80,
     "reflect_every": 8,
+    "ingest": {
+        "chunk_chars": 4000,
+        "max_chunks": 12,
+        "min_chars_per_page": 200,
+    },
 }
 
 CONFIG_FILENAME = "minerva.config.json"

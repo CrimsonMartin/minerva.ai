@@ -27,6 +27,13 @@ def main(argv: list[str] | None = None) -> int:
                                "breadth: hunt for the idea across domains")
     research.add_argument("--budget", type=int, default=50,
                           help="frontier steps (bounds LLM calls and wall time)")
+    research.add_argument("--input", action="append", default=[], metavar="FILE",
+                          help="local .pdf/.docx/.txt/.md to ingest as the research "
+                               "base (repeatable); its ideas seed the frontier")
+
+    ingest = sub.add_parser("ingest", help="ingest local files into the vault "
+                                           "without running a research session")
+    ingest.add_argument("files", nargs="+", help=".pdf/.docx/.txt/.md paths")
 
     sub.add_parser("ideas", help="list ideas in the vault by paper count")
 
@@ -41,10 +48,41 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "research":
+        from pathlib import Path
+
         from .agent import run_research
-        report = run_research(config, args.topic, args.mode, args.budget)
+        report = run_research(config, args.topic, args.mode, args.budget,
+                              inputs=[Path(p) for p in args.input])
         print(f"\nreport: {report}")
         return 0
+
+    if args.command == "ingest":
+        from pathlib import Path
+
+        from .embeddings import EmbeddingIndex
+        from .ingest import IngestError, ingest_file
+        from .llm import LLM
+        from .store import Vault
+        llm = LLM(config)
+        vault = Vault(vault_path(config))
+        index = EmbeddingIndex(vault.root)
+        settings = config["ingest"]
+        failures = 0
+        for file in args.files:
+            try:
+                doc = ingest_file(
+                    llm, vault, index, Path(file), config["merge_threshold"],
+                    chunk_chars=settings["chunk_chars"],
+                    max_chunks=settings["max_chunks"],
+                    min_chars_per_page=settings["min_chars_per_page"],
+                )
+            except IngestError as exc:
+                print(f"{file}: FAILED — {exc}")
+                failures += 1
+                continue
+            cached = " (already in vault)" if doc["cached"] else ""
+            print(f"{file}: {doc['id']}{cached}, {len(doc['slugs'])} ideas")
+        return 1 if failures else 0
 
     if args.command == "ideas":
         from .store import Vault

@@ -121,7 +121,10 @@ class Vault:
 
     def _render_paper(self, paper: dict) -> str:
         lines = [f"# {paper['title']}\n"]
-        meta = [f"**PMID:** [{paper['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{paper['pmid']}/)"]
+        if paper.get("source"):  # local document ingested from disk, not PubMed
+            meta = [f"**Source:** `{paper['source']}`", f"**ID:** {paper['pmid']}"]
+        else:
+            meta = [f"**PMID:** [{paper['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{paper['pmid']}/)"]
         if paper.get("journal"):
             meta.append(f"**Journal:** {paper['journal']}")
         if paper.get("year"):
