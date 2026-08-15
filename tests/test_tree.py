@@ -152,11 +152,11 @@ class CountingMock(MockLLM):
     calls = 0
     max_content = 0
 
-    def chat(self, system, user, json_mode=False):
+    def chat(self, system, user, response_format=None):
         if "condensing one node" in system:
             self.calls += 1
             self.max_content = max(self.max_content, len(user))
-        return super().chat(system, user, json_mode)
+        return super().chat(system, user, response_format)
 
 
 if __name__ == "__main__":

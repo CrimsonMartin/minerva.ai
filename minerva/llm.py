@@ -29,7 +29,7 @@ class LLM:
 
     # ------------------------------------------------------------- chat
 
-    def chat(self, system: str, user: str, json_mode: bool = False) -> str:
+    def chat(self, system: str, user: str, response_format: dict | None = None) -> str:
         body = {
             "model": self.chat_model,
             "temperature": self.temperature,
@@ -39,24 +39,36 @@ class LLM:
                 {"role": "user", "content": user},
             ],
         }
-        if json_mode:
-            body["response_format"] = {"type": "json_object"}
+        if response_format:
+            body["response_format"] = response_format
         response = self.session.post(
             f"{self.base_url}/chat/completions", json=body, timeout=self.timeout
         )
-        if response.status_code == 400 and json_mode:
-            # Some servers reject response_format; fall back to prompt-only JSON.
-            body.pop("response_format")
-            response = self.session.post(
-                f"{self.base_url}/chat/completions", json=body, timeout=self.timeout
-            )
+        if response.status_code == 400 and response_format:
+            # Server rejected the format constraint — degrade one rung:
+            # json_schema -> json_object -> prompt-only JSON.
+            if response_format.get("type") == "json_schema":
+                return self.chat(system, user, {"type": "json_object"})
+            return self.chat(system, user)
         if response.status_code != 200:
             raise LLMError(f"chat failed ({response.status_code}): {response.text[:500]}")
         return response.json()["choices"][0]["message"]["content"]
 
-    def chat_json(self, system: str, user: str) -> dict:
-        """Chat expecting a JSON object back, with one repair retry."""
-        text = self.chat(system, user, json_mode=True)
+    def chat_json(self, system: str, user: str, schema: dict | None = None) -> dict:
+        """Chat expecting a JSON object back, with one repair retry.
+
+        With `schema`, servers that support structured output (LM Studio,
+        llama.cpp, vLLM) constrain decoding so the reply can't be malformed
+        or missing required keys; others degrade via the ladder in chat().
+        """
+        response_format: dict = {"type": "json_object"}
+        if schema:
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {"name": schema.get("title", "reply"),
+                                "strict": True, "schema": schema},
+            }
+        text = self.chat(system, user, response_format)
         try:
             return _extract_json(text)
         except ValueError:
@@ -64,7 +76,7 @@ class LLM:
                 f"{user}\n\nYour previous reply was not valid JSON. "
                 "Reply again with ONLY a valid JSON object, no prose."
             )
-            text = self.chat(system, retry, json_mode=True)
+            text = self.chat(system, retry, response_format)
             return _extract_json(text)
 
     # -------------------------------------------------------- embeddings

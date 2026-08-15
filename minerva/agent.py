@@ -23,6 +23,19 @@ from .notebook import Notebook
 from .report import synthesize
 from .store import Vault, slugify
 
+REFLECT_SCHEMA = {
+    "title": "reflection",
+    "type": "object",
+    "properties": {
+        "assessment": {"type": "string"},
+        "gaps": {"type": "array", "items": {"type": "string"}},
+        "queries": {"type": "array", "items": {"type": "string"}},
+        "done": {"type": "boolean"},
+    },
+    "required": ["assessment", "gaps", "queries", "done"],
+    "additionalProperties": False,
+}
+
 
 def run_research(config: dict, topic: str, mode: str, budget: int,
                  inputs: list[Path] | None = None,
@@ -323,7 +336,7 @@ def _reflect(llm, frontier, notebook, topic, mode, log) -> bool:
         f"{notebook.as_text() or '(empty)'}"
     )
     try:
-        result = llm.chat_json(_prompt("reflect"), user)
+        result = llm.chat_json(_prompt("reflect"), user, REFLECT_SCHEMA)
     except LLMError as exc:
         log(f"  reflect failed, continuing: {exc}")
         return True
