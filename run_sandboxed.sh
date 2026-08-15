@@ -3,7 +3,7 @@
 #
 # Filesystem: read-only system dirs, writable ONLY this project directory.
 # Network: shared with the host (bwrap network isolation is all-or-nothing,
-# and the agent needs localhost for Qwen/Ollama plus HTTPS for PubMed).
+# and the agent needs localhost for LM Studio plus HTTPS for PubMed).
 #
 # Usage: ./run_sandboxed.sh research "ferroptosis in cancer therapy" --mode depth
 set -euo pipefail

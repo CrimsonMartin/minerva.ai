@@ -7,8 +7,9 @@ articles into a network, and explores a topic with a tunable knob:
 - **depth** — drill into exactly how one idea works, level by level
 - **breadth** — hunt for the same idea used creatively across distant fields
 
-Everything runs on your machine: a local LLM (Qwen via Ollama/vLLM/
-llama.cpp — any OpenAI-compatible endpoint) and a **files-only backend**.
+Everything runs on your machine: a local LLM served by **LM Studio**
+(or any OpenAI-compatible endpoint — vLLM, llama.cpp, Ollama) and a
+**files-only backend**.
 No database. The knowledge graph is a folder of `.json` + `.md` files you
 can read, grep, and open in Obsidian (graph view draws your idea network).
 
@@ -94,12 +95,22 @@ every run makes future runs on nearby topics warmer.
 
 ```bash
 pip install -r requirements.txt        # just: requests (flask etc. for the old web UI)
-ollama pull qwen3:14b                  # or any chat model you like
-ollama pull nomic-embed-text           # embedding model
+lms get qwen/qwen3-14b                 # or any chat model you like
+lms get text-embedding-nomic-embed-text-v1.5   # embedding model
+lms server start                       # OpenAI-compatible API on localhost:1234
 python -m minerva init                 # writes minerva.config.json + vault/
 ```
 
-Edit `minerva.config.json` to point at your endpoint/models.
+`lms` is [LM Studio's CLI](https://lmstudio.ai/docs/cli); you can equally
+download the models and start the server from the LM Studio app
+(Developer tab → Start Server). Use the model identifiers LM Studio
+shows — they're what the API expects.
+
+Config defaults to LM Studio at `http://localhost:1234/v1`. To point at
+a different endpoint or model, edit `minerva.config.json`, or copy
+`.env.example` to `.env` and set the `MINERVA_LLM_*` variables
+(environment/`.env` wins over the JSON). Any OpenAI-compatible server
+works — vLLM, llama.cpp, Ollama — it's just a base URL + model names.
 
 ## Use
 
@@ -143,7 +154,7 @@ Watch a run live: `tail -f vault/runs/<run>/log.md` — or just open
 ```
 
 Read-only system, writable only this project dir, shared network (needed
-for localhost Qwen + PubMed).
+for localhost LM Studio + PubMed).
 
 ## Testing / dry-run
 
