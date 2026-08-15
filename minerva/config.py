@@ -1,14 +1,11 @@
-"""Configuration loading.
+"""Configuration.
 
-Config lives in minerva.config.json at the repo/working root so it is
-editable by hand like everything else. `python -m minerva init` writes
-the default file. LLM connection settings can also come from the
-environment (or a `.env` file at the root) via the MINERVA_LLM_*
-variables — those win over the JSON file, so a `.env` can point one
-checkout at a different LM Studio host/model without touching config.
+Settings live in DEFAULT_CONFIG below — edit them there. The LLM
+connection can be overridden without touching code via the MINERVA_LLM_*
+variables, from the environment or a `.env` file at the root
+(environment wins over `.env`).
 """
 
-import json
 import os
 from pathlib import Path
 
@@ -46,8 +43,6 @@ DEFAULT_CONFIG = {
     },
 }
 
-CONFIG_FILENAME = "minerva.config.json"
-
 # Environment variable → path into the config dict.
 ENV_OVERRIDES = {
     "MINERVA_LLM_BASE_URL": ("llm", "base_url"),
@@ -84,10 +79,7 @@ def _read_dotenv(root: Path) -> dict[str, str]:
 
 def load_config(root: Path | None = None) -> dict:
     root = root or Path.cwd()
-    path = root / CONFIG_FILENAME
-    config = DEFAULT_CONFIG
-    if path.exists():
-        config = _merge(DEFAULT_CONFIG, json.loads(path.read_text()))
+    config = dict(DEFAULT_CONFIG)  # never hand back the module-level dict itself
     dotenv = _read_dotenv(root)
     for env_key, (section, key) in ENV_OVERRIDES.items():
         value = os.environ.get(env_key, dotenv.get(env_key))
@@ -95,14 +87,6 @@ def load_config(root: Path | None = None) -> dict:
             config = _merge(config, {section: {key: value}})
     config["_root"] = str(root)
     return config
-
-
-def write_default_config(root: Path | None = None) -> Path:
-    root = root or Path.cwd()
-    path = root / CONFIG_FILENAME
-    if not path.exists():
-        path.write_text(json.dumps(DEFAULT_CONFIG, indent=2) + "\n")
-    return path
 
 
 def vault_path(config: dict) -> Path:

@@ -1,5 +1,2 @@
-flask
-tqdm
-elasticsearch
 requests
 pypdf
