@@ -7,6 +7,3 @@ venv/
 # local settings + agent output
 .env
 vault/
-
-# keep test fixtures despite broad ignores above
-!tests/fixtures/**
