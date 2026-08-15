@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         from .store import Vault
         llm = make_llm(config)
         vault = Vault(vault_path(config))
-        index = EmbeddingIndex(vault.root)
+        index = EmbeddingIndex(vault.root, model=config["llm"]["embed_model"])
         failures = 0
         for file in args.files:
             try:

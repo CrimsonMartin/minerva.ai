@@ -13,15 +13,32 @@ from pathlib import Path
 
 
 class EmbeddingIndex:
-    def __init__(self, vault: Path):
+    def __init__(self, vault: Path, model: str | None = None):
+        """`model` is the embed model id this index's vectors come from.
+        Vectors from different models are not comparable, so a stored index
+        built with a different model is refused rather than silently mixed.
+        """
         self.path = vault / "index" / "embeddings.json"
+        self.model = model
         self.vectors: dict[str, list[float]] = {}
         if self.path.exists():
-            self.vectors = json.loads(self.path.read_text())
+            data = json.loads(self.path.read_text())
+            if isinstance(data, dict) and "vectors" in data:
+                stored = data.get("model")
+                if model and stored and stored != model:
+                    raise ValueError(
+                        f"vault index was built with embed model {stored!r} but the "
+                        f"current config uses {model!r} — their vectors are not "
+                        f"comparable. Use a fresh vault, or set the embed model back."
+                    )
+                self.model = model or stored
+                self.vectors = data["vectors"]
+            else:  # legacy flat format: adopt it and stamp the model on next save
+                self.vectors = data
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.vectors))
+        self.path.write_text(json.dumps({"model": self.model, "vectors": self.vectors}))
 
     def add(self, key: str, vector: list[float]) -> None:
         self.vectors[key] = vector

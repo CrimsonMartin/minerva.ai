@@ -45,7 +45,7 @@ def run_research(config: dict, topic: str, mode: str, budget: int,
     the default (a same-day rerun of a topic implicitly resumes it)."""
     llm = make_llm(config)
     vault = Vault(vault_path(config))
-    index = EmbeddingIndex(vault.root)
+    index = EmbeddingIndex(vault.root, model=config["llm"]["embed_model"])
     email = config["pubmed"]["email"]
 
     run_dir, note = _select_run_dir(vault.runs_dir, topic, mode, resume)
@@ -105,7 +105,7 @@ def run_research(config: dict, topic: str, mode: str, budget: int,
 
     log(f"run end · {steps} steps, {len(notebook.findings)} findings, "
         f"{len(vault.list_ideas())} ideas in vault")
-    report_path = synthesize(llm, vault, notebook, run_dir, topic, mode)
+    report_path = synthesize(llm, vault, notebook, run_dir, topic, mode, log=log)
     log(f"report written: {report_path}")
     return report_path
 
@@ -168,6 +168,7 @@ def _seed_from_input(config, llm, vault, index, frontier, notebook,
             llm, vault, index, path, config["merge_threshold"],
             tree_config=config["tree"], link_threshold=config.get("link_threshold"),
             min_chars_per_page=config["ingest"]["min_chars_per_page"],
+            log=log,
         )
     except IngestError as exc:
         log(f"input skipped: {exc}")
@@ -250,10 +251,12 @@ def _read_fulltext(vault, index, llm, notebook, paper, config, email, log) -> bo
     text = "\n\n".join(p["text"] for p in paragraphs)
     settings = config["tree"]
     leaves = split_paragraphs(text, settings["leaf_chars"])
+    log(f"  full text: {len(leaves)} leaves — building tree")
     result = build_paper_tree(
         llm, vault, index, pmid, leaves, config["merge_threshold"],
         link_threshold=config.get("link_threshold"),
         group_chars=settings["group_chars"], max_paragraphs=settings["max_paragraphs"],
+        log=log,
     )
     log(f"  full text: {result['n_leaves']} leaves → tree depth {result['depth']}, "
         f"{len(result['slugs'])} ideas")
