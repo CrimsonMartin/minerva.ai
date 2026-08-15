@@ -5,12 +5,43 @@ and a detail panel — with the graph data embedded, so it can be opened
 from disk, mailed, or hosted anywhere with no server or dependencies.
 """
 
+import base64
 import json
+import math
 from pathlib import Path
 
+from .embeddings import EmbeddingIndex
 from .store import Vault
 
 TEMPLATE = Path(__file__).parent / "templates" / "graph.html"
+
+
+def _quantized_vectors(vault: Vault, slugs: list[str]) -> dict | None:
+    """Idea vectors as one base64 int8 blob, in `slugs` order.
+
+    Vectors are unit-normalized first, so a dot product of the int8 values
+    (over 127²) approximates cosine — accurate enough for ranking at an
+    eighth the size of float32.
+    """
+    index = EmbeddingIndex(vault.root)
+    vectors = [index.get(f"idea:{slug}") for slug in slugs]
+    present = [v for v in vectors if v]
+    if not present:
+        return None
+    dims = len(present[0])
+    if any(len(v) != dims for v in present):
+        return None  # mixed embedding spaces: not comparable, skip the feature
+    buf = bytearray()
+    for vector in vectors:
+        if not vector:
+            buf.extend(b"\x00" * dims)
+            continue
+        norm = math.sqrt(sum(x * x for x in vector)) or 1.0
+        for x in vector:
+            q = round(x / norm * 127)
+            buf.append(max(-127, min(127, q)) & 0xFF)
+    return {"dims": dims, "model": index.model,
+            "data": base64.b64encode(bytes(buf)).decode()}
 
 
 def graph_data(vault: Vault) -> dict:
@@ -52,8 +83,17 @@ def graph_data(vault: Vault) -> dict:
             "paperMeta": papers}
 
 
-def render_graph_html(vault: Vault, out_path: Path, title: str = "Idea Network") -> Path:
+def render_graph_html(vault: Vault, out_path: Path, title: str = "Idea Network",
+                      embed_search: dict | None = None) -> Path:
+    """`embed_search` is {"url", "model", "apiKey"} for the OpenAI-compatible
+    endpoint the page should use to embed search queries. The page falls back
+    to text matching whenever it is absent or unreachable."""
     data = graph_data(vault)
+    vectors = _quantized_vectors(vault, [n["id"] for n in data["nodes"]])
+    if vectors:
+        data["vectors"] = vectors
+    if embed_search:
+        data["embedSearch"] = embed_search
     html = TEMPLATE.read_text()
     html = html.replace("__TITLE__", title)
     html = html.replace("__DATA__", json.dumps(data))

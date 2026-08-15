@@ -41,7 +41,13 @@
     letter-spacing: .01em; text-wrap: balance; }
   #stats { color: var(--ink-2); font-variant-numeric: tabular-nums; }
   #stats b { color: var(--ink); font-weight: 600; }
-  #search { margin-left: auto; background: var(--panel); color: var(--ink);
+  #searchbox { margin-left: auto; display: flex; flex-direction: column;
+    align-items: flex-end; gap: 3px; }
+  #search-note { font-size: 11.5px; color: var(--ink-3); min-height: 14px;
+    padding-right: 2px; }
+  #search-note[data-kind="ok"] { color: var(--accent); }
+  #search-note[data-kind="warn"] { color: var(--s2); }
+  #search { background: var(--panel); color: var(--ink);
     border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px;
     width: min(300px, 70vw); font: inherit; }
   #search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -102,8 +108,11 @@
 <div class="hud" id="header">
   <h1>__TITLE__</h1>
   <span id="stats"></span>
-  <input id="search" type="search" placeholder="Search ideas…"
-         aria-label="Search idea statements">
+  <span id="searchbox">
+    <input id="search" type="search" placeholder="Search ideas…"
+           aria-label="Search idea statements">
+    <span id="search-note" role="status"></span>
+  </span>
 </div>
 
 <div class="hud" id="legend" role="group" aria-label="Domains — click to isolate"></div>
@@ -287,12 +296,61 @@ function focusNode(n) {
 }
 let selected = null, hovered = null, soloDomain = null, query = '';
 let labelHits = [];   // screen-space boxes of the drawn labels, for hit-testing
+let semantic = null;  // Map(node -> similarity) when a semantic search is live
+
+// ---- embedding search ----------------------------------------------------
+// Idea vectors ride along in the page (unit-normalized int8), so ranking is a
+// dot product here. Only the *query* needs the model, so the page asks the
+// configured endpoint for it; anything missing or unreachable falls back to
+// plain text matching, which always works offline.
+const VEC = (() => {
+  const v = DATA.vectors;
+  if (!v) return null;
+  const bin = atob(v.data);
+  const buf = new Int8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = (bin.charCodeAt(i) << 24) >> 24;
+  return { dims: v.dims, buf, model: v.model };
+})();
+
+function scoreAgainst(qvec) {
+  const { dims, buf } = VEC;
+  const scores = new Map();
+  for (let i = 0; i < nodes.length; i++) {
+    let dot = 0;
+    const off = i * dims;
+    for (let d = 0; d < dims; d++) dot += qvec[d] * buf[off + d];
+    scores.set(nodes[i], dot / 127);
+  }
+  return scores;
+}
+
+async function embedQuery(text) {
+  const cfg = DATA.embedSearch;
+  if (!cfg || !VEC) return null;
+  const res = await fetch(cfg.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',
+               ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) },
+    body: JSON.stringify({ model: cfg.model, input: text }),
+  });
+  if (!res.ok) throw new Error(`embed endpoint returned ${res.status}`);
+  const raw = (await res.json()).data[0].embedding;
+  if (raw.length !== VEC.dims) throw new Error('embedding size mismatch');
+  let norm = 0;
+  for (const x of raw) norm += x * x;
+  norm = Math.sqrt(norm) || 1;
+  return Float32Array.from(raw, x => x / norm);
+}
 let showRelated = false;   // the loose related_to mesh is opt-in: it is 2/3 of
                            // the edges and obscures the structural ones
+const SEMANTIC_KEEP = 25;      // how many ideas a semantic query surfaces
 const visible = n => {
   const domOK = !soloDomain ||
     (soloDomain === '__other__' ? slotOf(n.domain) === 0 : n.domain === soloDomain);
-  return domOK && (!query || n.statement.toLowerCase().includes(query));
+  if (!domOK) return false;
+  if (!query) return true;
+  if (semantic) return semantic.has(n);
+  return n.statement.toLowerCase().includes(query);
 };
 function emphasis(n) {
   if (!visible(n)) return .12;
@@ -474,6 +532,25 @@ function papersSection(n) {
   return `<h3>${cites.length} source paper${cites.length === 1 ? '' : 's'}</h3>${rows}`;
 }
 
+// Nearest ideas by embedding, whether or not the graph links them — this one
+// needs no endpoint, since both vectors are already in the page.
+function similarSection(n) {
+  if (!VEC) return '';
+  const i = nodes.indexOf(n);
+  const { dims, buf } = VEC;
+  const q = new Float32Array(dims);
+  for (let d = 0; d < dims; d++) q[d] = buf[i * dims + d] / 127;
+  const near = [...scoreAgainst(q)]
+    .filter(([m]) => m !== n && !neighbors.get(n).has(m))
+    .sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .filter(([, s]) => s > .55);
+  if (!near.length) return '';
+  return `<h3>similar, not linked</h3>` + near.map(([m, s]) =>
+    `<button class="rel" data-id="${esc(m.id)}">
+       <span class="kind">${s.toFixed(2)} · ${esc(m.domain)}</span><br>
+       ${esc(m.statement)}</button>`).join('');
+}
+
 function select(n, { focus = true } = {}) {
   const had = panel.classList.contains('open');
   selected = n;
@@ -495,7 +572,8 @@ function select(n, { focus = true } = {}) {
         <span class="tag">level ${n.level}</span>
       </div>
       ${papersSection(n)}
-      <h3>${n.deg} connected idea${n.deg === 1 ? '' : 's'}</h3>${rels}`;
+      <h3>${n.deg} connected idea${n.deg === 1 ? '' : 's'}</h3>${rels}
+      ${similarSection(n)}`;
   }
   draw();
 }
@@ -540,15 +618,59 @@ relBtn.addEventListener('click', () => {
 });
 
 const search = document.getElementById('search');
+const searchNote = document.getElementById('search-note');
+const canEmbed = !!(DATA.embedSearch && VEC);
+search.placeholder = canEmbed ? 'Search ideas by meaning…' : 'Search ideas…';
+
+function setNote(text, kind) {
+  searchNote.textContent = text;
+  searchNote.dataset.kind = kind || '';
+}
+
+let searchSeq = 0;
+async function runSearch(text) {
+  const seq = ++searchSeq;
+  query = text.trim().toLowerCase();
+  if (!query) { semantic = null; setNote(''); draw(); return; }
+  if (!canEmbed) {
+    semantic = null;
+    setNote(`${nodes.filter(visible).length} text matches`);
+    draw(); return;
+  }
+  setNote('embedding…', 'busy');
+  draw();
+  try {
+    const qvec = await embedQuery(text.trim());
+    if (seq !== searchSeq) return;              // a newer keystroke won
+    const ranked = [...scoreAgainst(qvec)]
+      .sort((a, b) => b[1] - a[1]).slice(0, SEMANTIC_KEEP);
+    semantic = new Map(ranked);
+    setNote(`${ranked.length} by meaning · best ${ranked[0][1].toFixed(2)}`, 'ok');
+  } catch (err) {
+    if (seq !== searchSeq) return;
+    semantic = null;                            // endpoint down → text matching
+    setNote(`${nodes.filter(visible).length} text matches (endpoint offline)`, 'warn');
+  }
+  draw();
+}
+
+let searchTimer = null;
 search.addEventListener('input', e => {
-  query = e.target.value.trim().toLowerCase(); draw();
+  const text = e.target.value;
+  clearTimeout(searchTimer);
+  // Debounce: one embedding request per pause, not per keystroke.
+  searchTimer = setTimeout(() => runSearch(text), canEmbed ? 350 : 0);
 });
 // Enter jumps to the best match, so search doubles as navigation.
 search.addEventListener('keydown', e => {
-  if (e.key !== 'Enter' || !query) return;
-  const match = nodes.filter(n => n.statement.toLowerCase().includes(query))
-    .sort((a, b) => b.deg - a.deg)[0];
-  if (match) select(match);
+  if (e.key !== 'Enter' || !search.value.trim()) return;
+  clearTimeout(searchTimer);
+  runSearch(search.value).then(() => {
+    const best = semantic
+      ? [...semantic].sort((a, b) => b[1] - a[1])[0]?.[0]
+      : nodes.filter(visible).sort((a, b) => b.deg - a.deg)[0];
+    if (best) select(best);
+  });
 });
 addEventListener('keydown', e => { if (e.key === 'Escape') select(null); });
 addEventListener('resize', resize);

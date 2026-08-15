@@ -133,6 +133,16 @@ python -m minerva graph                # render the network as an interactive
                                        # self-contained vault/graph.html
 ```
 
+The graph page carries the vault's idea vectors, so its search box matches
+by **meaning**: the query is embedded through the configured endpoint and
+ranked against them ("tiny particles that deliver drugs" finds the
+nanomedicine ideas, no shared wording needed). It degrades on its own —
+no endpoint configured, or the endpoint unreachable, and the box goes back
+to plain text matching, with the current mode shown under the box. Each
+idea's panel also lists its nearest *unlinked* ideas, which needs no
+endpoint at all. The endpoint URL is baked into the page, so render with
+`--no-embed-search` for a page you intend to share.
+
 ### Resuming vs. duplicating a run
 
 Every run lives in its own `vault/runs/<date-topic-mode>/` directory, and
