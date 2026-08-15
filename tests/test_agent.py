@@ -8,10 +8,8 @@ from pathlib import Path
 
 from minerva import agent, pubmed
 from minerva.config import DEFAULT_CONFIG, _merge
-from minerva.embeddings import EmbeddingIndex
 from minerva.ingest import extract_text
 from minerva.llm import _extract_json
-from minerva.mock import MockLLM
 from minerva.store import Vault
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -103,7 +101,7 @@ def test_breadth_vs_depth_scoring():
     d_novel = depth.score(relevance=0.4, domains=["botany"])
     b_novel = breadth.score(relevance=0.4, domains=["botany"])
     assert (b_novel - b) > (d_novel - d), "breadth should reward novelty more than depth"
-    print(f"  scoring: depth favors familiar-relevant, breadth favors novel domains")
+    print("  scoring: depth favors familiar-relevant, breadth favors novel domains")
 
 
 def test_docx_and_extraction():
