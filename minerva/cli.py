@@ -23,7 +23,8 @@ def main(argv: list[str] | None = None) -> int:
                           help="depth: drill into the mechanism; "
                                "breadth: hunt for the idea across domains")
     research.add_argument("--budget", type=int, default=50,
-                          help="frontier steps (bounds LLM calls and wall time)")
+                          help="papers to read (bounds LLM extraction work; "
+                               "graph walks and query searches are free)")
     research.add_argument("--input", action="append", default=[], metavar="FILE",
                           help="local .pdf/.docx/.txt/.md to ingest as the research "
                                "base (repeatable); its ideas seed the frontier")

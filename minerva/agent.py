@@ -85,37 +85,45 @@ def run_research(config: dict, topic: str, mode: str, budget: int,
     if not frontier.visited:  # fresh run (not a resume) — seed from the topic too
         _seed(frontier, topic, config["pubmed"]["seed_results"], email, log)
 
+    # The budget counts papers actually read (LLM extraction work) — the
+    # expensive unit. Graph walks and query searches are near-free and don't
+    # consume it; a pop cap keeps them from looping unbounded on a warm vault.
     steps = 0
-    while steps < budget:
+    pops = 0
+    pop_cap = budget * 25
+    last_reflect = 0
+    while steps < budget and pops < pop_cap:
         item = frontier.pop()
         if item is None:
             log("frontier empty — reflecting for new directions")
             if not _reflect(llm, frontier, notebook, topic, mode, log):
                 break
             continue
-        steps += 1
-        log(f"step {steps}/{budget} · {item['kind']} {item['id']} "
+        pops += 1
+        log(f"read {steps}/{budget} · {item['kind']} {item['id']} "
             f"(score {item['score']}) — {item['reason']}")
         try:
             if item["kind"] == "query":
                 _do_query(frontier, vault, index, llm, item["id"], topic_vector,
                           config["pubmed"]["expand_results"], email)
             elif item["kind"] == "paper":
-                _do_paper(frontier, vault, index, llm, notebook, item["id"],
-                          topic_vector, config, email, log)
+                if _do_paper(frontier, vault, index, llm, notebook, item["id"],
+                             topic_vector, config, email, log):
+                    steps += 1
             elif item["kind"] == "idea":
                 _do_idea(frontier, vault, index, llm, item["id"], topic_vector, mode)
         except (LLMError, pubmed.requests.RequestException) as exc:
             log(f"  step failed, continuing: {exc}")
-        if steps % config["reflect_every"] == 0:
+        if steps - last_reflect >= config["reflect_every"]:
+            last_reflect = steps
             if _reflect(llm, frontier, notebook, topic, mode, log):
                 pass
             else:
                 log("reflection says done")
                 break
 
-    log(f"run end · {steps} steps, {len(notebook.findings)} findings, "
-        f"{len(vault.list_ideas())} ideas in vault")
+    log(f"run end · {steps} paper(s) read over {pops} frontier steps, "
+        f"{len(notebook.findings)} findings, {len(vault.list_ideas())} ideas in vault")
     report_path = synthesize(llm, vault, notebook, run_dir, topic, mode, log=log)
     log(f"report written: {report_path}")
     return report_path
@@ -216,22 +224,26 @@ def _do_query(frontier, vault, index, llm, query, topic_vector, retmax, email) -
 
 
 def _do_paper(frontier, vault, index, llm, notebook, pmid, topic_vector,
-              config, email, log) -> None:
+              config, email, log) -> bool:
+    """Returns True when the paper was actually read (extraction work ran) —
+    the unit the run budget counts. Cached papers cost nothing."""
+    read = False
     if not vault.has_paper(pmid):
         fetched = pubmed.fetch([pmid], email=email)
         if not fetched:
-            return
+            return False
         vault.save_paper(fetched[0])
     paper = vault.load_paper(pmid)
     if not paper.get("ideas"):  # lazy extraction: only papers the agent touches
         if not _read_fulltext(vault, index, llm, notebook, paper, config, email, log):
             if not paper.get("abstract"):
-                return
+                return False
             extracted = extract_ideas(llm, paper)
             canonicalize(llm, vault, index, pmid, extracted, config["merge_threshold"],
                          link_threshold=config.get("link_threshold"), level=0)
             if extracted["key_finding"]:
                 notebook.note(extracted["key_finding"], [pmid])
+        read = True
         paper = vault.load_paper(pmid)
     for link in paper["ideas"]:
         idea = vault.load_idea(link["slug"])
@@ -239,6 +251,7 @@ def _do_paper(frontier, vault, index, llm, notebook, pmid, topic_vector,
         relevance = cosine(vector, topic_vector) if vector else 0.5
         frontier.push("idea", link["slug"], relevance, [idea["domain"]],
                       f"idea from PMID {pmid}")
+    return read
 
 
 def _read_fulltext(vault, index, llm, notebook, paper, config, email, log) -> bool:
