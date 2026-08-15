@@ -5,5 +5,3 @@ The .json files are the source of truth; the .md files are regenerated
 views whose relative links turn the folder structure into a browsable
 idea network (Obsidian-compatible).
 """
-
-__version__ = "0.1.0"

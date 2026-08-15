@@ -19,8 +19,6 @@ the idea network. The tree is stored as tree.json (source of truth) and
 tree.md (readable outline with links) in the paper's folder.
 """
 
-from pathlib import Path
-
 from .embeddings import EmbeddingIndex
 from .extract import canonicalize, _prompt
 from .llm import LLM

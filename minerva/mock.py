@@ -25,9 +25,6 @@ def _sentences(text: str) -> list[str]:
 
 
 class MockLLM:
-    chat_model = "mock"
-    embed_model = "mock"
-
     # -------------------------------------------------------------- chat
 
     def chat(self, system: str, user: str, json_mode: bool = False) -> str:
