@@ -232,6 +232,8 @@ for (let i = 0; i < 600; i++) tick(Math.max(.05, .35 * (1 - i / 600)));  // sett
 // ---- rendering ----
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const panel = document.getElementById('panel');   // needed by draw(), which the
+                                                  // render loop calls immediately
 let view = { x: 0, y: 0, k: 1 }, dpr = 1;
 function resize() {
   dpr = devicePixelRatio || 1;
@@ -239,21 +241,52 @@ function resize() {
   fitView();
   draw();
 }
-// Frame the graph's actual extent, with room for the HUD chrome.
-function fitView() {
-  const pad = { l: 34, r: 34, t: 66, b: 54 };
-  const finite = nodes.filter(n => isFinite(n.x) && isFinite(n.y));
-  if (!finite.length) { view = { x: innerWidth / 2, y: innerHeight / 2, k: 1 }; return; }
+// Width the panel covers — the canvas keeps drawing under it, so framing and
+// labels must stay clear of that strip.
+const panelW = () =>
+  panel.classList.contains('open') ? Math.min(360, innerWidth * .92) : 0;
+
+/** View that frames `set`, clamped so a lone node doesn't zoom absurdly. */
+function viewFor(set, minK, maxK) {
+  const pad = { l: 34, r: 34 + panelW(), t: 66, b: 54 };
+  const finite = set.filter(n => isFinite(n.x) && isFinite(n.y));
+  if (!finite.length) return { x: innerWidth / 2, y: innerHeight / 2, k: 1 };
   const xs = finite.map(n => n.x), ys = finite.map(n => n.y);
   const x0 = Math.min(...xs), x1 = Math.max(...xs);
   const y0 = Math.min(...ys), y1 = Math.max(...ys);
   const w = innerWidth - pad.l - pad.r, h = innerHeight - pad.t - pad.b;
-  view.k = Math.min(6, Math.max(.15,
-    Math.min(w / Math.max(x1 - x0, 1), h / Math.max(y1 - y0, 1)) * .92));
-  view.x = pad.l + w / 2 - (x0 + x1) / 2 * view.k;
-  view.y = pad.t + h / 2 - (y0 + y1) / 2 * view.k;
+  const k = Math.min(maxK, Math.max(minK,
+    Math.min(w / Math.max(x1 - x0, 1), h / Math.max(y1 - y0, 1)) * .88));
+  return { k, x: pad.l + w / 2 - (x0 + x1) / 2 * k,
+           y: pad.t + h / 2 - (y0 + y1) / 2 * k };
+}
+function fitView() { view = viewFor(nodes, .15, 6); }
+
+/** Ease the view to `target` (instant when reduced motion is preferred). */
+let anim = null;
+function glideTo(target) {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) { view = target; draw(); return; }
+  const from = { ...view }, t0 = performance.now(), dur = 420;
+  if (anim) cancelAnimationFrame(anim);
+  (function step(now) {
+    const p = Math.min(1, (now - t0) / dur);
+    const e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;  // ease
+    view = { x: from.x + (target.x - from.x) * e,
+             y: from.y + (target.y - from.y) * e,
+             k: from.k + (target.k - from.k) * e };
+    draw();
+    if (p < 1) anim = requestAnimationFrame(step);
+  })(t0);
+}
+
+/** Frame a node together with everything it links to. */
+function focusNode(n) {
+  const set = [n, ...neighbors.get(n)];
+  glideTo(viewFor(set, .35, 1.9));
 }
 let selected = null, hovered = null, soloDomain = null, query = '';
+let labelHits = [];   // screen-space boxes of the drawn labels, for hit-testing
 let showRelated = false;   // the loose related_to mesh is opt-in: it is 2/3 of
                            // the edges and obscures the structural ones
 const visible = n => {
@@ -310,27 +343,39 @@ function draw() {
   ctx.font = '600 11.5px system-ui, sans-serif';
   ctx.textBaseline = 'middle';
   const placed = [];
-  const cands = [...nodes].sort((a, b) => b.deg - a.deg);
+  labelHits = [];   // rebuilt every frame so the text itself is clickable
+  // With a selection, label that neighbourhood (and give it room for longer
+  // text) instead of the busiest nodes globally — that is what you're reading.
+  const focus = selected ? [selected, ...neighbors.get(selected)] : null;
+  const cands = focus
+    ? focus.slice().sort((a, b) => (a === selected ? -1 : b === selected ? 1 : b.deg - a.deg))
+    : [...nodes].sort((a, b) => b.deg - a.deg);
+  const maxLabels = focus ? 18 : 22;
+  const maxChars = focus ? 64 : 34;
+  const rightEdge = innerWidth - panelW() - 12;
   let drawn = 0;
   for (const n of cands) {
-    if (drawn >= 26) break;
+    if (drawn >= maxLabels) break;
     if (emphasis(n) < .5) continue;
     const sx = n.x * view.k + view.x, sy = n.y * view.k + view.y;
-    if (sx < 60 || sx > innerWidth - 60 || sy < 54 || sy > innerHeight - 48) continue;
-    const text = n.statement.length > 38
-      ? n.statement.slice(0, 38).trimEnd() + '…' : n.statement;
+    if (sx < 40 || sx > rightEdge - 40 || sy < 54 || sy > innerHeight - 48) continue;
+    const text = n.statement.length > maxChars
+      ? n.statement.slice(0, maxChars).trimEnd() + '…' : n.statement;
     const w = ctx.measureText(text).width;
     const x = sx + n.r * view.k + 5, y = sy;
     const box = { x0: x - 2, y0: y - 8, x1: x + w + 2, y1: y + 8 };
     if (placed.some(p => box.x0 < p.x1 && box.x1 > p.x0 &&
                          box.y0 < p.y1 && box.y1 > p.y0)) continue;
-    if (x + w > innerWidth - 12) continue;
+    if (x + w > rightEdge) continue;       // never run under the detail panel
     placed.push(box);
+    labelHits.push({ node: n, box });
     drawn++;
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = C.surface; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+    ctx.font = n === selected
+      ? '600 13px system-ui, sans-serif' : '600 11.5px system-ui, sans-serif';
+    ctx.strokeStyle = C.surface; ctx.lineWidth = 3.5; ctx.lineJoin = 'round';
     ctx.strokeText(text, x, y);            // halo so type survives over edges
-    ctx.fillStyle = C.ink;
+    ctx.fillStyle = n === selected ? C.accent : C.ink;
     ctx.fillText(text, x, y);
   }
 }
@@ -346,11 +391,18 @@ const wake = n => { running = Math.max(running, n); };
 const toWorld = (px, py) =>
   ({ x: (px - view.x) / view.k, y: (py - view.y) / view.k });
 function hit(px, py) {
+  // Labels first: the text is a far bigger target than the dot, and anything
+  // labelled is what you're most likely aiming at.
+  for (const l of labelHits) {
+    if (px >= l.box.x0 - 3 && px <= l.box.x1 + 3 &&
+        py >= l.box.y0 - 3 && py <= l.box.y1 + 3) return l.node;
+  }
   const p = toWorld(px, py);
   let best = null, bd = Infinity;
   for (const n of nodes) {
     const d = Math.hypot(n.x - p.x, n.y - p.y);
-    if (d < Math.max(n.r + 3, 8 / view.k) && d < bd) { best = n; bd = d; }
+    // generous screen-space radius so small dots stay clickable when zoomed out
+    if (d < Math.max(n.r + 3, 11 / view.k) && d < bd) { best = n; bd = d; }
   }
   return best;
 }
@@ -375,7 +427,7 @@ canvas.addEventListener('pointermove', e => {
     draw(); return;
   }
   const h = hit(e.clientX, e.clientY);
-  if (h !== hovered) { hovered = h; draw(); }
+  if (h !== hovered) { hovered = h; canvas.style.cursor = h ? 'pointer' : ''; draw(); }
   if (h) {
     tip.style.display = 'block';
     tip.style.left = Math.min(e.clientX + 14, innerWidth - 330) + 'px';
@@ -386,7 +438,8 @@ canvas.addEventListener('pointermove', e => {
 });
 canvas.addEventListener('pointerup', e => {
   canvas.classList.remove('dragging');
-  if (!moved) { select(hit(e.clientX, e.clientY)); }
+  // A canvas click keeps your own framing; only panel navigation re-frames.
+  if (!moved) { select(hit(e.clientX, e.clientY), { focus: false }); }
   dragNode = null; panning = false; last = null;
 });
 canvas.addEventListener('wheel', e => {
@@ -421,10 +474,12 @@ function papersSection(n) {
   return `<h3>${cites.length} source paper${cites.length === 1 ? '' : 's'}</h3>${rows}`;
 }
 
-const panel = document.getElementById('panel');
-function select(n) {
+function select(n, { focus = true } = {}) {
+  const had = panel.classList.contains('open');
   selected = n;
   panel.classList.toggle('open', !!n);
+  if (n && focus) focusNode(n);
+  else if (had !== panel.classList.contains('open')) fitView();
   if (n) {
     const rels = edges.filter(e => e.a === n || e.b === n).map(e => {
       const other = e.a === n ? e.b : e.a;
@@ -484,8 +539,16 @@ relBtn.addEventListener('click', () => {
   draw();
 });
 
-document.getElementById('search').addEventListener('input', e => {
+const search = document.getElementById('search');
+search.addEventListener('input', e => {
   query = e.target.value.trim().toLowerCase(); draw();
+});
+// Enter jumps to the best match, so search doubles as navigation.
+search.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || !query) return;
+  const match = nodes.filter(n => n.statement.toLowerCase().includes(query))
+    .sort((a, b) => b.deg - a.deg)[0];
+  if (match) select(match);
 });
 addEventListener('keydown', e => { if (e.key === 'Escape') select(null); });
 addEventListener('resize', resize);
