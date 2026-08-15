@@ -16,21 +16,42 @@ from .store import Vault
 TEMPLATE = Path(__file__).parent / "templates" / "graph.html"
 
 
-def _quantized_vectors(vault: Vault, slugs: list[str]) -> dict | None:
-    """Idea vectors as one base64 int8 blob, in `slugs` order.
+# The page embeds search queries in the browser, so its vectors come from a
+# model small enough to run there — not from the vault's (larger) model. The
+# two need only agree with each other; the vault's own embeddings are
+# untouched, since they drive idea canonicalization.
+SEARCH_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+# The same weights packaged as ONNX, which is what transformers.js loads in
+# the browser. Both sides must stay the same model or the query vector lands
+# in a different space than the vectors shipped in the page.
+SEARCH_MODEL_ONNX = "Xenova/all-MiniLM-L6-v2"
 
-    Vectors are unit-normalized first, so a dot product of the int8 values
-    (over 127²) approximates cosine — accurate enough for ranking at an
-    eighth the size of float32.
+
+def _search_vectors(statements: list[str]) -> dict | None:
+    """Embed idea statements with the in-browser search model."""
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError:
+        return None
+    model = SentenceTransformer(SEARCH_MODEL)
+    vectors = model.encode(statements, normalize_embeddings=True,
+                           batch_size=32, show_progress_bar=False)
+    return _quantize([v.tolist() for v in vectors], SEARCH_MODEL)
+
+
+def _quantize(vectors: list[list[float]], model: str) -> dict | None:
+    """Vectors as one base64 int8 blob.
+
+    Unit-normalized first, so a dot product of the int8 values (over 127²)
+    approximates cosine — accurate enough for ranking at an eighth the size
+    of float32.
     """
-    index = EmbeddingIndex(vault.root)
-    vectors = [index.get(f"idea:{slug}") for slug in slugs]
     present = [v for v in vectors if v]
     if not present:
         return None
     dims = len(present[0])
     if any(len(v) != dims for v in present):
-        return None  # mixed embedding spaces: not comparable, skip the feature
+        return None
     buf = bytearray()
     for vector in vectors:
         if not vector:
@@ -40,7 +61,7 @@ def _quantized_vectors(vault: Vault, slugs: list[str]) -> dict | None:
         for x in vector:
             q = round(x / norm * 127)
             buf.append(max(-127, min(127, q)) & 0xFF)
-    return {"dims": dims, "model": index.model,
+    return {"dims": dims, "model": model,
             "data": base64.b64encode(bytes(buf)).decode()}
 
 
@@ -83,17 +104,14 @@ def graph_data(vault: Vault) -> dict:
             "paperMeta": papers}
 
 
-def render_graph_html(vault: Vault, out_path: Path, title: str = "Idea Network",
-                      embed_search: dict | None = None) -> Path:
-    """`embed_search` is {"url", "model", "apiKey"} for the OpenAI-compatible
-    endpoint the page should use to embed search queries. The page falls back
-    to text matching whenever it is absent or unreachable."""
+def render_graph_html(vault: Vault, out_path: Path,
+                      title: str = "Idea Network") -> Path:
+    """Render the network, with vectors for in-browser semantic search."""
     data = graph_data(vault)
-    vectors = _quantized_vectors(vault, [n["id"] for n in data["nodes"]])
+    vectors = _search_vectors([n["statement"] for n in data["nodes"]])
     if vectors:
         data["vectors"] = vectors
-    if embed_search:
-        data["embedSearch"] = embed_search
+        data["searchModel"] = SEARCH_MODEL_ONNX
     html = TEMPLATE.read_text()
     html = html.replace("__TITLE__", title)
     html = html.replace("__DATA__", json.dumps(data))

@@ -133,15 +133,21 @@ python -m minerva graph                # render the network as an interactive
                                        # self-contained vault/graph.html
 ```
 
-The graph page carries the vault's idea vectors, so its search box matches
-by **meaning**: the query is embedded through the configured endpoint and
-ranked against them ("tiny particles that deliver drugs" finds the
-nanomedicine ideas, no shared wording needed). It degrades on its own —
-no endpoint configured, or the endpoint unreachable, and the box goes back
-to plain text matching, with the current mode shown under the box. Each
-idea's panel also lists its nearest *unlinked* ideas, which needs no
-endpoint at all. The endpoint URL is baked into the page, so render with
-`--no-embed-search` for a page you intend to share.
+The graph page searches by **meaning**, with no server involved: rendering
+re-embeds every idea with a small sentence model (all-MiniLM-L6-v2) and
+ships those vectors in the file, and the page embeds your query with the
+same model in the browser via WebGPU (transformers.js, weights fetched and
+cached on first search). So "tiny particles that deliver drugs" finds the
+nanomedicine ideas with no shared wording. Offline or on an old browser it
+falls back to plain text matching, and the box says which mode it is in.
+Each idea's panel also lists its nearest *unlinked* ideas — that one is
+pure arithmetic on the shipped vectors and always works.
+
+The search model is deliberately *not* the vault's embedding model: the
+vault's model drives idea canonicalization and should be the best one you
+can serve, while the page needs one small enough to run in a browser. They
+never interact — the page's vectors and its query come from the same small
+model, so they are consistent with each other.
 
 ### Resuming vs. duplicating a run
 

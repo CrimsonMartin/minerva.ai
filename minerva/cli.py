@@ -53,11 +53,6 @@ def main(argv: list[str] | None = None) -> int:
                        help="output path (default: vault/graph.html)")
     graph.add_argument("--title", default="Idea Network",
                        help="page title (default: Idea Network)")
-    graph.add_argument("--no-embed-search", action="store_true",
-                       help="omit the embedding endpoint from the page; its "
-                            "search box then matches text only (the endpoint "
-                            "URL is otherwise baked in, so use this for a page "
-                            "you intend to share)")
 
     args = parser.parse_args(argv)
     config = load_config()
@@ -111,20 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         if not vault.list_ideas():
             print("(vault has no ideas yet — run a research session first)")
             return 1
-        embed_search = None
-        if not args.no_embed_search and not config["llm"]["embed_model"].startswith("local:"):
-            embed_search = {
-                "url": (config["llm"].get("embed_base_url")
-                        or config["llm"]["base_url"]).rstrip("/") + "/embeddings",
-                "model": config["llm"]["embed_model"],
-                "apiKey": config["llm"]["api_key"],
-            }
-        path = render_graph_html(vault, Path(args.out), title=args.title,
-                                 embed_search=embed_search)
+        path = render_graph_html(vault, Path(args.out), title=args.title)
         print(f"graph written: {path}")
-        if embed_search:
-            print(f"  semantic search via {embed_search['url']} "
-                  f"({embed_search['model']}), falling back to text matching")
         return 0
 
     if args.command == "ideas":

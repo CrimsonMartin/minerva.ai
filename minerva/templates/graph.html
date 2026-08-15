@@ -324,22 +324,40 @@ function scoreAgainst(qvec) {
   return scores;
 }
 
-async function embedQuery(text) {
-  const cfg = DATA.embedSearch;
-  if (!cfg || !VEC) return null;
-  const res = await fetch(cfg.url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json',
-               ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) },
-    body: JSON.stringify({ model: cfg.model, input: text }),
-  });
-  if (!res.ok) throw new Error(`embed endpoint returned ${res.status}`);
-  const raw = (await res.json()).data[0].embedding;
+// The query is embedded in the browser by the same small model that produced
+// the vectors above (all-MiniLM-L6-v2, ~23 MB, cached by the browser after
+// the first search). WebGPU when available, WASM otherwise. No server.
+let embedder = null, embedderFailed = false;
+async function getEmbedder(onStatus) {
+  if (embedder || embedderFailed) return embedder;
+  onStatus?.('loading search model (first time only)…');
+  try {
+    const { pipeline, env } = await import(
+      'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1');
+    env.allowLocalModels = false;
+    // dtype is not a free choice: q8 weights produce garbage vectors on the
+    // WebGPU backend (measured cosine ~0 against the same model's known
+    // output), so WebGPU takes fp32 and only the CPU path uses the small
+    // quantized weights.
+    const device = navigator.gpu ? 'webgpu' : 'wasm';
+    const dtype = device === 'webgpu' ? 'fp32' : 'q8';
+    embedder = await pipeline('feature-extraction', DATA.searchModel,
+                              { device, dtype });
+    embedder.device = `${device}/${dtype}`;
+  } catch (err) {
+    embedderFailed = true;                 // offline / no CDN / unsupported
+    throw err;
+  }
+  return embedder;
+}
+
+async function embedQuery(text, onStatus) {
+  if (!VEC) return null;
+  const pipe = await getEmbedder(onStatus);
+  const out = await pipe(text, { pooling: 'mean', normalize: true });
+  const raw = Array.from(out.data);
   if (raw.length !== VEC.dims) throw new Error('embedding size mismatch');
-  let norm = 0;
-  for (const x of raw) norm += x * x;
-  norm = Math.sqrt(norm) || 1;
-  return Float32Array.from(raw, x => x / norm);
+  return Float32Array.from(raw);
 }
 let showRelated = false;   // the loose related_to mesh is opt-in: it is 2/3 of
                            // the edges and obscures the structural ones
@@ -543,7 +561,9 @@ function similarSection(n) {
   const near = [...scoreAgainst(q)]
     .filter(([m]) => m !== n && !neighbors.get(n).has(m))
     .sort((a, b) => b[1] - a[1]).slice(0, 5)
-    .filter(([, s]) => s > .55);
+    // Above the typical nearest-neighbour similarity for this model, so the
+    // list means "unusually close", not just "closest available".
+    .filter(([, s]) => s > .78);
   if (!near.length) return '';
   return `<h3>similar, not linked</h3>` + near.map(([m, s]) =>
     `<button class="rel" data-id="${esc(m.id)}">
@@ -619,7 +639,7 @@ relBtn.addEventListener('click', () => {
 
 const search = document.getElementById('search');
 const searchNote = document.getElementById('search-note');
-const canEmbed = !!(DATA.embedSearch && VEC);
+const canEmbed = !!(VEC && DATA.searchModel);
 search.placeholder = canEmbed ? 'Search ideas by meaning…' : 'Search ideas…';
 
 function setNote(text, kind) {
@@ -637,19 +657,21 @@ async function runSearch(text) {
     setNote(`${nodes.filter(visible).length} text matches`);
     draw(); return;
   }
-  setNote('embedding…', 'busy');
+  setNote(embedder ? 'searching…' : 'preparing…', 'busy');
   draw();
   try {
-    const qvec = await embedQuery(text.trim());
+    const qvec = await embedQuery(text.trim(),
+      msg => { if (seq === searchSeq) setNote(msg, 'busy'); });
     if (seq !== searchSeq) return;              // a newer keystroke won
     const ranked = [...scoreAgainst(qvec)]
       .sort((a, b) => b[1] - a[1]).slice(0, SEMANTIC_KEEP);
     semantic = new Map(ranked);
-    setNote(`${ranked.length} by meaning · best ${ranked[0][1].toFixed(2)}`, 'ok');
+    setNote(`${ranked.length} by meaning · best ${ranked[0][1].toFixed(2)} · ${
+      embedder.device}`, 'ok');
   } catch (err) {
     if (seq !== searchSeq) return;
-    semantic = null;                            // endpoint down → text matching
-    setNote(`${nodes.filter(visible).length} text matches (endpoint offline)`, 'warn');
+    semantic = null;                            // no model → text matching
+    setNote(`${nodes.filter(visible).length} text matches (model unavailable)`, 'warn');
   }
   draw();
 }
