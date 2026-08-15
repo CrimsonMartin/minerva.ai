@@ -92,13 +92,30 @@ class MockLLM:
     def _merge(self, user: str) -> dict:
         new_match = re.search(r"statement: (.+)", user)
         new_statement = new_match.group(1).strip().lower() if new_match else ""
-        slug, statement = None, None
-        for match in re.finditer(r"slug: (\S+).*?\n\s*statement: (.+)", user):
-            if match.group(2).strip().lower() == new_statement:
-                slug = match.group(1)
-                break
-        if slug:
-            return {"decision": "merge", "target": slug, "relation": None, "note": ""}
+        level_match = re.search(r"level: (\d+)", user)
+        new_level = int(level_match.group(1)) if level_match else 0
+
+        # (slug, statement, eligibility, level) for each ranked candidate.
+        candidates = [
+            (m.group(1), m.group(3).strip().lower(), m.group(2), int(m.group(4)))
+            for m in re.finditer(
+                r"- slug: (\S+) \(similarity [0-9.]+, (merge-eligible|link-only)\)\s*\n"
+                r"\s*statement: (.+)\n\s*type:.*?level: (\d+)",
+                user,
+            )
+        ]
+        # Same wording and close enough to merge → merge.
+        for slug, statement, eligibility, _ in candidates:
+            if statement == new_statement and eligibility == "merge-eligible":
+                return {"decision": "merge", "target": slug, "relation": None, "note": ""}
+        # A candidate at a different abstraction level → part_of link (cross-level).
+        for slug, _, _, cand_level in candidates:
+            if cand_level != new_level:
+                return {"decision": "link", "target": slug, "relation": "part_of",
+                        "note": "cross-level (mock)"}
+        if candidates:
+            return {"decision": "link", "target": candidates[0][0],
+                    "relation": "related_to", "note": "mock"}
         return {"decision": "new", "target": None, "relation": None, "note": ""}
 
 
