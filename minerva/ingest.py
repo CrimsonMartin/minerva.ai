@@ -102,6 +102,7 @@ def ingest_file(
     merge_threshold: float,
     tree_config: dict | None = None,
     min_chars_per_page: int = 200,
+    link_threshold: float | None = None,
 ) -> dict:
     """Ingest one local file via a recursive paper tree.
 
@@ -135,6 +136,7 @@ def ingest_file(
     paragraphs = split_paragraphs(text, tree_config.get("leaf_chars", 1200))
     result = build_paper_tree(
         llm, vault, index, doc_id, paragraphs, merge_threshold,
+        link_threshold=link_threshold,
         group_chars=tree_config.get("group_chars", 3500),
         max_paragraphs=tree_config.get("max_paragraphs", 500),
     )

@@ -30,6 +30,7 @@ DEFAULT_CONFIG = {
         "breadth": {"alpha": 0.55, "beta": 1.0},
     },
     "merge_threshold": 0.80,
+    "link_threshold": 0.62,
     "reflect_every": 8,
     "ingest": {
         "min_chars_per_page": 200,

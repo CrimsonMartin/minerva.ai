@@ -67,6 +67,7 @@ def build_paper_tree(
     paper_id: str,
     paragraphs: list[str],
     merge_threshold: float,
+    link_threshold: float | None = None,
     group_chars: int = 3500,
     max_paragraphs: int = 500,
 ) -> dict:
@@ -119,6 +120,7 @@ def build_paper_tree(
         slugs = canonicalize(
             llm, vault, index, paper_id,
             {"key_finding": "", "ideas": node["ideas"]}, merge_threshold,
+            link_threshold=link_threshold, level=node["level"],
         )
         node["slugs"] = slugs
         all_slugs.extend(s for s in slugs if s not in all_slugs)

@@ -102,7 +102,7 @@ def _seed_from_input(config, llm, vault, index, frontier, notebook,
     try:
         doc = ingest_file(
             llm, vault, index, path, config["merge_threshold"],
-            tree_config=config["tree"],
+            tree_config=config["tree"], link_threshold=config.get("link_threshold"),
             min_chars_per_page=config["ingest"]["min_chars_per_page"],
         )
     except IngestError as exc:
@@ -152,7 +152,8 @@ def _do_paper(frontier, vault, index, llm, notebook, pmid, topic_vector,
             if not paper.get("abstract"):
                 return
             extracted = extract_ideas(llm, paper)
-            canonicalize(llm, vault, index, pmid, extracted, config["merge_threshold"])
+            canonicalize(llm, vault, index, pmid, extracted, config["merge_threshold"],
+                         link_threshold=config.get("link_threshold"), level=0)
             if extracted["key_finding"]:
                 notebook.note(extracted["key_finding"], [pmid])
         paper = vault.load_paper(pmid)
@@ -187,6 +188,7 @@ def _read_fulltext(vault, index, llm, notebook, paper, config, email, log) -> bo
     leaves = split_paragraphs(text, settings["leaf_chars"])
     result = build_paper_tree(
         llm, vault, index, pmid, leaves, config["merge_threshold"],
+        link_threshold=config.get("link_threshold"),
         group_chars=settings["group_chars"], max_paragraphs=settings["max_paragraphs"],
     )
     log(f"  full text: {result['n_leaves']} leaves → tree depth {result['depth']}, "
