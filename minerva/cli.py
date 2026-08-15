@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 doc = ingest_file(
                     llm, vault, index, Path(file), config["merge_threshold"],
-                    tree_config=config["tree"],
+                    tree_config=config["tree"], link_threshold=config.get("link_threshold"),
                     min_chars_per_page=config["ingest"]["min_chars_per_page"],
                 )
             except IngestError as exc:

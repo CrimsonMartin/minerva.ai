@@ -54,33 +54,48 @@ def canonicalize(
     pmid: str,
     extracted: dict,
     merge_threshold: float,
+    link_threshold: float | None = None,
+    level: int = 0,
 ) -> list[str]:
-    """Merge extracted ideas into the vault. Returns slugs touched (new or merged)."""
+    """Merge extracted ideas into the vault. Returns slugs touched (new or merged).
+
+    Two-tier candidate net so ideas at DIFFERENT abstraction levels connect:
+    - candidates at/above `merge_threshold` may be merged (same idea).
+    - candidates between `link_threshold` and `merge_threshold` are shown as
+      link-only. This lower gate is what lets a specific claim in one paper
+      reach a broader, differently-worded idea in another — cross-level pairs
+      never hit the high merge bar, so without it they'd never even be seen.
+    """
+    if link_threshold is None:  # sensible default: well below the merge bar
+        link_threshold = max(0.5, round(merge_threshold - 0.18, 2))
+
     touched = []
     for raw in extracted["ideas"]:
         vector = llm.embed(raw["statement"])
-        candidates = [
+        ranked = [
             (key.removeprefix("idea:"), score)
-            for key, score in index.search(vector, k=5, prefix="idea:")
-            if score >= merge_threshold
+            for key, score in index.search(vector, k=8, prefix="idea:")
+            if score >= link_threshold
         ]
         decision = {"decision": "new"}
-        if candidates:
-            decision = _adjudicate(llm, vault, raw, candidates)
+        if ranked:
+            decision = _adjudicate(llm, vault, raw, level, ranked, merge_threshold)
 
-        if decision["decision"] == "merge" and vault.has_idea(decision.get("target") or ""):
-            slug = decision["target"]
+        target = decision.get("target") or ""
+        if decision["decision"] == "merge" and vault.has_idea(target):
+            slug = target
         else:
             idea = vault.create_idea(
-                raw["statement"], raw["type"], raw["domain"], raw["entities"]
+                raw["statement"], raw["type"], raw["domain"], raw["entities"], level
             )
             slug = idea["slug"]
             index.add(f"idea:{slug}", vector)
-            if decision["decision"] == "link" and vault.has_idea(decision.get("target") or ""):
+            if decision["decision"] == "link" and vault.has_idea(target):
                 relation = decision.get("relation")
                 if relation not in IDEA_RELATIONS:
                     relation = "related_to"
-                vault.link_ideas(slug, decision["target"], relation, decision.get("note", ""))
+                source, dest = _orient(vault, slug, level, target, relation)
+                vault.link_ideas(source, dest, relation, decision.get("note", ""))
 
         vault.link_paper_idea(pmid, slug, raw["relation_to_paper"])
         touched.append(slug)
@@ -88,24 +103,49 @@ def canonicalize(
     return touched
 
 
+def _orient(vault: Vault, new_slug: str, new_level: int, target: str,
+            relation: str) -> tuple[str, str]:
+    """Point a part_of edge from the more specific idea to the broader one.
+
+    `part_of` is directional (small is part of large). Whichever idea sits at
+    the lower tree level is the specific one, regardless of which paper's
+    canonicalization created the edge. Symmetric relations keep new -> target.
+    """
+    if relation != "part_of":
+        return new_slug, target
+    target_level = vault.load_idea(target).get("level", 0)
+    if target_level < new_level:  # the existing idea is the more specific one
+        return target, new_slug
+    return new_slug, target
+
+
 def _adjudicate(
-    llm: LLM, vault: Vault, raw: dict, candidates: list[tuple[str, float]]
+    llm: LLM, vault: Vault, raw: dict, new_level: int,
+    ranked: list[tuple[str, float]], merge_threshold: float,
 ) -> dict:
     lines = [
         "NEW idea:",
         f"  statement: {raw['statement']}",
-        f"  type: {raw['type']}  domain: {raw['domain']}",
+        f"  type: {raw['type']}  domain: {raw['domain']}  level: {new_level}",
         "",
-        "SIMILAR existing ideas:",
+        "EXISTING ideas ranked by embedding similarity:",
     ]
-    for slug, score in candidates:
+    for slug, score in ranked:
         existing = vault.load_idea(slug)
+        eligibility = "merge-eligible" if score >= merge_threshold else "link-only"
         lines.append(
-            f"  - slug: {slug} (similarity {score:.2f})\n"
+            f"  - slug: {slug} (similarity {score:.2f}, {eligibility})\n"
             f"    statement: {existing['statement']}\n"
-            f"    type: {existing['type']}  domain: {existing['domain']}"
+            f"    type: {existing['type']}  domain: {existing['domain']}  "
+            f"level: {existing.get('level', 0)}"
         )
     result = llm.chat_json(_prompt("merge"), "\n".join(lines))
     if result.get("decision") not in ("merge", "link", "new"):
         result["decision"] = "new"
+    # Guard: a link-only candidate can never be merged, whatever the model says.
+    if result["decision"] == "merge":
+        target = result.get("target")
+        eligible = {s for s, sc in ranked if sc >= merge_threshold}
+        if target not in eligible:
+            result["decision"] = "link" if target in {s for s, _ in ranked} else "new"
     return result

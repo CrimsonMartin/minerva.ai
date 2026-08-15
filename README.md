@@ -28,6 +28,18 @@ ideas get a `part_of` edge to their parent node's idea, projecting the
 paper's own structure into the idea network. Each paper folder gets a
 `tree.json` (source of truth) and a readable `tree.md` outline.
 
+**Cross-level linking.** Every idea records the tree `level` it came from
+(0 = a specific leaf claim, higher = broader/topic level). When a new idea
+is canonicalized it is embedded and compared against *all* existing ideas
+regardless of level, through two gates: candidates above `merge_threshold`
+may be merged (same idea), while candidates above the lower `link_threshold`
+are offered as link-only. That lower gate is what lets a specific claim in
+one paper reach a broader, differently-worded idea in another — cross-level
+pairs never clear the high merge bar, so without it they'd never be seen.
+The model links them with `part_of` (or `analogous_to`, etc.), and the edge
+is always oriented specific → broad by comparing levels, whichever paper
+introduced which.
+
 Full text comes from **PubMed Central** when a paper is open-access
 (`elink` → PMCID → JATS XML → section-aware paragraphs); otherwise the
 agent falls back to the abstract. Local files (`--input`) go through the
