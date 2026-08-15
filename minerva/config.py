@@ -23,6 +23,7 @@ DEFAULT_CONFIG = {
         "email": "",
         "seed_results": 20,
         "expand_results": 8,
+        "full_text": True,
     },
     "scoring": {
         "depth": {"alpha": 1.0, "beta": 0.15},
@@ -31,9 +32,12 @@ DEFAULT_CONFIG = {
     "merge_threshold": 0.80,
     "reflect_every": 8,
     "ingest": {
-        "chunk_chars": 4000,
-        "max_chunks": 12,
         "min_chars_per_page": 200,
+    },
+    "tree": {
+        "leaf_chars": 1200,
+        "group_chars": 3500,
+        "max_paragraphs": 500,
     },
 }
 

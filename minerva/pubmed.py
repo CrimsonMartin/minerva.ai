@@ -54,6 +54,75 @@ def fetch(pmids: list[str], email: str = "") -> list[dict]:
     return _parse_efetch(response.text)
 
 
+def fetch_fulltext(pmid: str, email: str = "") -> list[dict] | None:
+    """Full text paragraphs for a PMID via PubMed Central, or None.
+
+    Only works for the PMC open-access subset: elink maps the PMID to a
+    PMCID, efetch returns JATS XML, and we pull the body paragraphs with
+    their section titles. Returns [{"section", "text"}, ...] or None when
+    there is no PMC record or no readable body (paywalled/abstract-only).
+    """
+    _throttle()
+    params = {"dbfrom": "pubmed", "db": "pmc", "id": pmid, "retmode": "json"}
+    if email:
+        params["email"] = email
+    response = requests.get(f"{EUTILS}/elink.fcgi", params=params, timeout=60)
+    response.raise_for_status()
+    pmcid = None
+    for linkset in response.json().get("linksets", []):
+        for linksetdb in linkset.get("linksetdbs", []):
+            if linksetdb.get("linkname") == "pubmed_pmc" and linksetdb.get("links"):
+                pmcid = linksetdb["links"][0]
+                break
+    if not pmcid:
+        return None
+
+    _throttle()
+    params = {"db": "pmc", "id": pmcid, "retmode": "xml"}
+    if email:
+        params["email"] = email
+    response = requests.get(f"{EUTILS}/efetch.fcgi", params=params, timeout=120)
+    response.raise_for_status()
+    paragraphs = parse_jats_body(response.text)
+    return paragraphs or None
+
+
+def parse_jats_body(xml_text: str) -> list[dict]:
+    """Extract body paragraphs (with section titles) from PMC JATS XML."""
+    root = ET.fromstring(xml_text)
+    body = root.find(".//body")
+    if body is None:
+        return []
+    paragraphs: list[dict] = []
+
+    def walk(node, section: str) -> None:
+        for child in node:
+            tag = child.tag.split("}")[-1]  # tolerate namespaced JATS
+            if tag == "sec":
+                title = child.find("title")
+                name = "".join(title.itertext()).strip() if title is not None else section
+                walk(child, name or section)
+            elif tag == "p":
+                text = " ".join("".join(child.itertext()).split())
+                if text:
+                    paragraphs.append({"section": section, "text": text})
+
+    walk(body, "")
+    return paragraphs
+
+
+def fulltext_markdown(title: str, paragraphs: list[dict]) -> str:
+    """Render fetched full text as a readable markdown document."""
+    lines = [f"# {title}\n"]
+    last_section = None
+    for paragraph in paragraphs:
+        if paragraph["section"] and paragraph["section"] != last_section:
+            lines.append(f"## {paragraph['section']}\n")
+            last_section = paragraph["section"]
+        lines.append(paragraph["text"] + "\n")
+    return "\n".join(lines)
+
+
 def _parse_efetch(xml_text: str) -> list[dict]:
     papers = []
     root = ET.fromstring(xml_text)

@@ -1,0 +1,61 @@
+Abstract
+
+Ferroptosis is an iron-dependent form of regulated cell death characterized by the accumulation of lipid peroxides. Here we review the biochemical machinery that governs sensitivity to ferroptosis and its emerging role in cancer therapy.
+
+Introduction
+
+Regulated cell death encompasses several morphologically and biochemically distinct programs. Apoptosis, necroptosis, and pyroptosis have been studied for decades, but ferroptosis was defined comparatively recently as an iron-dependent, non-apoptotic death modality.
+
+The hallmark of ferroptosis is the iron-catalyzed peroxidation of polyunsaturated fatty acids within membrane phospholipids. When antioxidant defenses fail, these lipid peroxides accumulate to lethal levels and destroy membrane integrity.
+
+Interest in ferroptosis has grown because many aggressive, treatment-resistant tumors appear unusually vulnerable to it, suggesting a therapeutic window that conventional apoptosis-inducing drugs do not exploit.
+
+The GPX4 axis
+
+Glutathione peroxidase 4, GPX4, is the master regulator that protects cells from ferroptosis. It uses reduced glutathione as a cofactor to reduce lipid hydroperoxides to their corresponding non-toxic alcohols.
+
+GPX4 is unusual among peroxidases in that it can act directly on complex membrane lipids rather than only on free hydroperoxides. This property makes it the sole enzyme capable of halting propagating lipid peroxidation in situ.
+
+The catalytic activity of GPX4 depends on a rare selenocysteine residue. Because selenocysteine biosynthesis requires selenium and an intact tRNA charging pathway, dietary selenium availability directly modulates ferroptosis resistance.
+
+Depletion of glutathione, for example by inhibiting the cystine-glutamate antiporter system xc-, starves GPX4 of its cofactor and triggers ferroptosis even when the enzyme itself is intact and abundant.
+
+Pharmacological inhibition
+
+Several small molecules inactivate GPX4 directly. RSL3 and ML162 covalently modify the selenocysteine in the active site, producing rapid and irreversible loss of enzyme activity.
+
+Because these compounds act downstream of glutathione synthesis, they induce ferroptosis in cells that resist system xc- inhibitors, defining two pharmacologically distinct classes of ferroptosis inducers.
+
+The kinetics of cell death after direct GPX4 inhibition are strikingly fast, with membrane rupture occurring within hours, consistent with the loss of a continuously required protective activity rather than the induction of a slow death program.
+
+Iron dependence
+
+Ferroptosis is strictly iron-dependent. Iron chelators such as deferoxamine prevent the lethal accumulation of lipid peroxides even when GPX4 is fully inhibited, placing catalytic iron squarely upstream of the death event.
+
+The relevant iron pool appears to be the labile, redox-active fraction rather than iron bound in ferritin or heme. Ferritinophagy, the autophagic degradation of ferritin, can expand this labile pool and thereby sensitize cells to ferroptosis.
+
+Iron participates in Fenton chemistry that generates the radicals initiating lipid peroxidation, and it is also required as a cofactor for the lipoxygenase enzymes that enzymatically oxygenate polyunsaturated fatty acids.
+
+Lipid metabolism
+
+The substrate for ferroptotic peroxidation is a specific subset of membrane lipids: phospholipids bearing polyunsaturated fatty acyl chains, especially those containing arachidonic and adrenic acid.
+
+The enzymes ACSL4 and LPCAT3 incorporate these polyunsaturated fatty acids into membrane phospholipids, and their expression sets the ceiling on how much peroxidizable substrate a cell contains.
+
+Consequently, cells lacking ACSL4 are markedly resistant to ferroptosis, and ACSL4 expression has been proposed as a biomarker predicting which tumors will respond to ferroptosis-inducing therapy.
+
+Cancer therapy
+
+A recurring theme is that therapy-resistant cancer cells often enter a mesenchymal, drug-tolerant persister state, and that this state carries an acquired dependence on GPX4 for survival.
+
+Persister cells that survive targeted therapy or chemotherapy can be selectively eliminated by ferroptosis inducers, suggesting a combination strategy in which ferroptosis clears the residual disease that would otherwise drive relapse.
+
+Because ferroptosis sensitivity depends on lipid composition and iron handling rather than on the apoptotic machinery, it can bypass the apoptosis-resistance mechanisms that commonly cause treatment failure.
+
+Translating these findings to patients is complicated by the difficulty of delivering ferroptosis inducers systemically and by the need for biomarkers that identify tumors with the requisite lipid and iron phenotype.
+
+Conclusions
+
+Ferroptosis is governed by a compact set of nodes: GPX4 and its glutathione cofactor, the labile iron pool, and the polyunsaturated lipid substrate. Perturbing any of these nodes shifts the balance between survival and death.
+
+The selective vulnerability of resistant cancer cells to ferroptosis makes this pathway an attractive therapeutic target, provided the field can develop drug-like inducers and predictive biomarkers.

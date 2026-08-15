@@ -17,7 +17,8 @@ from .config import vault_path
 from .embeddings import EmbeddingIndex, cosine
 from .extract import canonicalize, extract_ideas, _prompt
 from .frontier import Frontier
-from .llm import LLM, LLMError
+from .llm import LLMError
+from .mock import make_llm
 from .notebook import Notebook
 from .report import synthesize
 from .store import Vault, slugify
@@ -25,7 +26,7 @@ from .store import Vault, slugify
 
 def run_research(config: dict, topic: str, mode: str, budget: int,
                  inputs: list[Path] | None = None) -> Path:
-    llm = LLM(config)
+    llm = make_llm(config)
     vault = Vault(vault_path(config))
     index = EmbeddingIndex(vault.root)
     email = config["pubmed"]["email"]
@@ -72,7 +73,7 @@ def run_research(config: dict, topic: str, mode: str, budget: int,
                           config["pubmed"]["expand_results"], email)
             elif item["kind"] == "paper":
                 _do_paper(frontier, vault, index, llm, notebook, item["id"],
-                          topic_vector, config["merge_threshold"], email)
+                          topic_vector, config, email, log)
             elif item["kind"] == "idea":
                 _do_idea(frontier, vault, index, llm, item["id"], topic_vector, mode)
         except (LLMError, pubmed.requests.RequestException) as exc:
@@ -98,18 +99,20 @@ def _seed_from_input(config, llm, vault, index, frontier, notebook,
     """Ingest a local pdf/docx/txt file and seed the frontier with its ideas."""
     from .ingest import IngestError, ingest_file
 
-    settings = config["ingest"]
     try:
         doc = ingest_file(
             llm, vault, index, path, config["merge_threshold"],
-            chunk_chars=settings["chunk_chars"], max_chunks=settings["max_chunks"],
-            min_chars_per_page=settings["min_chars_per_page"],
+            tree_config=config["tree"],
+            min_chars_per_page=config["ingest"]["min_chars_per_page"],
         )
     except IngestError as exc:
         log(f"input skipped: {exc}")
         return
     cached = " (already in vault)" if doc["cached"] else ""
     log(f"input {path.name} → {doc['id']}{cached}, {len(doc['slugs'])} ideas")
+    if doc.get("tree") and doc["tree"]["truncated"]:
+        log(f"  WARNING: {doc['tree']['truncated']} paragraphs beyond "
+            f"tree.max_paragraphs were dropped")
     for finding in doc["findings"]:
         notebook.note(finding, [doc["id"]], via=path.name)
     for slug in doc["slugs"]:
@@ -137,20 +140,21 @@ def _do_query(frontier, vault, index, llm, query, topic_vector, retmax, email) -
 
 
 def _do_paper(frontier, vault, index, llm, notebook, pmid, topic_vector,
-              merge_threshold, email) -> None:
+              config, email, log) -> None:
     if not vault.has_paper(pmid):
         fetched = pubmed.fetch([pmid], email=email)
         if not fetched:
             return
         vault.save_paper(fetched[0])
     paper = vault.load_paper(pmid)
-    if not paper.get("abstract"):
-        return
     if not paper.get("ideas"):  # lazy extraction: only papers the agent touches
-        extracted = extract_ideas(llm, paper)
-        canonicalize(llm, vault, index, pmid, extracted, merge_threshold)
-        if extracted["key_finding"]:
-            notebook.note(extracted["key_finding"], [pmid])
+        if not _read_fulltext(vault, index, llm, notebook, paper, config, email, log):
+            if not paper.get("abstract"):
+                return
+            extracted = extract_ideas(llm, paper)
+            canonicalize(llm, vault, index, pmid, extracted, config["merge_threshold"])
+            if extracted["key_finding"]:
+                notebook.note(extracted["key_finding"], [pmid])
         paper = vault.load_paper(pmid)
     for link in paper["ideas"]:
         idea = vault.load_idea(link["slug"])
@@ -158,6 +162,44 @@ def _do_paper(frontier, vault, index, llm, notebook, pmid, topic_vector,
         relevance = cosine(vector, topic_vector) if vector else 0.5
         frontier.push("idea", link["slug"], relevance, [idea["domain"]],
                       f"idea from PMID {pmid}")
+
+
+def _read_fulltext(vault, index, llm, notebook, paper, config, email, log) -> bool:
+    """Try the PMC full-text + recursive-tree path. True when it handled the paper."""
+    if not config["pubmed"].get("full_text", True) or paper.get("source"):
+        return False
+    pmid = paper["pmid"]
+    try:
+        paragraphs = pubmed.fetch_fulltext(pmid, email=email)
+    except pubmed.requests.RequestException as exc:
+        log(f"  full text fetch failed for {pmid}, using abstract: {exc}")
+        return False
+    if not paragraphs or len(paragraphs) < 3:
+        return False  # not open access (or trivially short) — abstract path
+
+    from .tree import build_paper_tree, split_paragraphs
+
+    (vault.papers_dir / pmid / "fulltext.md").write_text(
+        pubmed.fulltext_markdown(paper["title"], paragraphs)
+    )
+    text = "\n\n".join(p["text"] for p in paragraphs)
+    settings = config["tree"]
+    leaves = split_paragraphs(text, settings["leaf_chars"])
+    result = build_paper_tree(
+        llm, vault, index, pmid, leaves, config["merge_threshold"],
+        group_chars=settings["group_chars"], max_paragraphs=settings["max_paragraphs"],
+    )
+    log(f"  full text: {result['n_leaves']} leaves → tree depth {result['depth']}, "
+        f"{len(result['slugs'])} ideas")
+    if result["truncated"]:
+        log(f"  WARNING: {result['truncated']} paragraphs beyond "
+            f"tree.max_paragraphs were dropped")
+    paper = vault.load_paper(pmid)
+    paper["summary"] = result["summary"]
+    vault.save_paper(paper)
+    if result["key_finding"]:
+        notebook.note(result["key_finding"], [pmid])
+    return True
 
 
 def _do_idea(frontier, vault, index, llm, slug, topic_vector, mode) -> None:

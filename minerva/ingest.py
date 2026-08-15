@@ -19,7 +19,6 @@ import zipfile
 from pathlib import Path
 
 from .embeddings import EmbeddingIndex
-from .extract import canonicalize, extract_ideas
 from .llm import LLM
 from .store import Vault
 
@@ -101,11 +100,17 @@ def ingest_file(
     index: EmbeddingIndex,
     path: Path,
     merge_threshold: float,
-    chunk_chars: int = 4000,
-    max_chunks: int = 12,
+    tree_config: dict | None = None,
     min_chars_per_page: int = 200,
 ) -> dict:
-    """Ingest one local file. Returns {"id", "slugs", "findings", "cached"}."""
+    """Ingest one local file via a recursive paper tree.
+
+    Returns {"id", "slugs" (root-level first), "findings", "cached",
+    "summary", "tree"}.
+    """
+    from .tree import build_paper_tree, split_paragraphs
+
+    tree_config = tree_config or {}
     path = path.expanduser().resolve()
     if not path.exists():
         raise IngestError(f"input file not found: {path}")
@@ -114,45 +119,31 @@ def ingest_file(
     if vault.has_paper(doc_id):  # same bytes already ingested — reuse the graph
         paper = vault.load_paper(doc_id)
         return {"id": doc_id, "slugs": [l["slug"] for l in paper["ideas"]],
-                "findings": [], "cached": True}
+                "findings": [], "cached": True, "summary": paper.get("summary", ""),
+                "tree": None}
 
     text = extract_text(path, min_chars_per_page).strip()
     if not text:
         raise IngestError(f"no text could be extracted from {path.name}")
 
     vault.save_paper(
-        {"pmid": doc_id, "title": path.stem, "abstract": text,
+        {"pmid": doc_id, "title": path.stem, "abstract": "",
          "source": str(path), "journal": "", "year": "", "mesh": []}
     )
+    (vault.papers_dir / doc_id / "fulltext.md").write_text(f"# {path.stem}\n\n{text}\n")
 
-    slugs, findings = [], []
-    chunks = _chunk(text, chunk_chars)[:max_chunks]
-    for number, chunk in enumerate(chunks, start=1):
-        label = f"{path.stem} (part {number}/{len(chunks)})" if len(chunks) > 1 else path.stem
-        extracted = extract_ideas(llm, {"title": label, "abstract": chunk, "mesh": []})
-        slugs.extend(canonicalize(llm, vault, index, doc_id, extracted, merge_threshold))
-        if extracted["key_finding"]:
-            findings.append(extracted["key_finding"])
-    return {"id": doc_id, "slugs": slugs, "findings": findings, "cached": False}
+    paragraphs = split_paragraphs(text, tree_config.get("leaf_chars", 1200))
+    result = build_paper_tree(
+        llm, vault, index, doc_id, paragraphs, merge_threshold,
+        group_chars=tree_config.get("group_chars", 3500),
+        max_paragraphs=tree_config.get("max_paragraphs", 500),
+    )
 
+    paper = vault.load_paper(doc_id)
+    paper["summary"] = result["summary"]
+    paper["abstract"] = result["summary"]  # condensed stand-in for downstream reads
+    vault.save_paper(paper)
 
-def _chunk(text: str, chunk_chars: int) -> list[str]:
-    """Split on paragraph boundaries into chunks of at most chunk_chars."""
-    chunks, current, size = [], [], 0
-    for paragraph in text.split("\n\n"):
-        paragraph = paragraph.strip()
-        if not paragraph:
-            continue
-        if size + len(paragraph) > chunk_chars and current:
-            chunks.append("\n\n".join(current))
-            current, size = [], 0
-        # A single paragraph longer than chunk_chars gets hard-split.
-        while len(paragraph) > chunk_chars:
-            chunks.append(paragraph[:chunk_chars])
-            paragraph = paragraph[chunk_chars:]
-        if paragraph:
-            current.append(paragraph)
-            size += len(paragraph) + 2
-    if current:
-        chunks.append("\n\n".join(current))
-    return chunks
+    findings = [result["key_finding"]] if result["key_finding"] else []
+    return {"id": doc_id, "slugs": result["slugs"], "findings": findings,
+            "cached": False, "summary": result["summary"], "tree": result}
