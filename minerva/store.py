@@ -77,12 +77,17 @@ class Vault:
     def list_ideas(self) -> list[str]:
         return sorted(p.name for p in self.ideas_dir.iterdir() if p.is_dir())
 
-    def create_idea(self, statement: str, idea_type: str, domain: str, entities: list[str]) -> dict:
+    def create_idea(self, statement: str, idea_type: str, domain: str,
+                    entities: list[str], level: int = 0) -> dict:
         idea = {
             "slug": slugify(statement),
             "statement": statement,
             "type": idea_type,
             "domain": domain,
+            # Abstraction level from the paper tree it was extracted at:
+            # 0 = a specific leaf/paragraph claim, higher = broader/topic level.
+            # Lets small ideas in one paper link up to broad ideas in another.
+            "level": level,
             "entities": entities,
             "papers": [],
             "edges": [],
@@ -157,7 +162,10 @@ class Vault:
 
     def _render_idea(self, idea: dict) -> str:
         lines = [f"# {idea['statement']}\n"]
-        lines.append(f"**Type:** {idea['type']} · **Domain:** {idea['domain']}\n")
+        lines.append(
+            f"**Type:** {idea['type']} · **Domain:** {idea['domain']} · "
+            f"**Level:** {idea.get('level', 0)}\n"
+        )
         if idea.get("entities"):
             lines.append(f"**Entities:** {', '.join(idea['entities'])}\n")
         if idea["papers"]:
