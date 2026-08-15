@@ -14,10 +14,28 @@ TEMPLATE = Path(__file__).parent / "templates" / "graph.html"
 
 
 def graph_data(vault: Vault) -> dict:
-    """Nodes + edges for every idea in the vault, as plain dicts."""
+    """Nodes + edges for every idea in the vault, as plain dicts.
+
+    Papers are carried once in a lookup keyed by id (nodes reference ids), so
+    a title shared by many ideas is not repeated through the payload.
+    """
     nodes, edges = [], []
+    papers: dict[str, dict] = {}
     for slug in vault.list_ideas():
         idea = vault.load_idea(slug)
+        cites = []
+        for link in idea["papers"]:
+            pmid = link["pmid"]
+            cites.append({"id": pmid, "relation": link["relation"]})
+            if pmid not in papers and vault.has_paper(pmid):
+                paper = vault.load_paper(pmid)
+                papers[pmid] = {
+                    "title": paper.get("title") or pmid,
+                    "year": paper.get("year", ""),
+                    "journal": paper.get("journal", ""),
+                    # local ingests have no PubMed record to link out to
+                    "local": bool(paper.get("source")),
+                }
         nodes.append({
             "id": idea["slug"],
             "statement": idea["statement"],
@@ -25,11 +43,13 @@ def graph_data(vault: Vault) -> dict:
             "domain": idea["domain"],
             "level": idea.get("level", 0),
             "papers": len(idea["papers"]),
+            "cites": cites,
         })
         for edge in idea["edges"]:
             edges.append({"source": idea["slug"], "target": edge["target"],
                           "rel": edge["relation"]})
-    return {"nodes": nodes, "edges": edges, "papers": len(vault.list_papers())}
+    return {"nodes": nodes, "edges": edges, "paperCount": len(vault.list_papers()),
+            "paperMeta": papers}
 
 
 def render_graph_html(vault: Vault, out_path: Path, title: str = "Idea Network") -> Path:

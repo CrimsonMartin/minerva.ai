@@ -85,6 +85,11 @@
   .rel:hover { color: var(--accent); }
   .rel .kind { color: var(--ink-3); font-size: 11px;
     font-family: ui-monospace, monospace; }
+  a.rel { text-decoration: none; }
+  a.rel:hover { color: var(--accent); text-decoration: underline; }
+  a.rel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .rel .sub { display: block; color: var(--ink-3); font-size: 11.5px;
+    margin-top: 2px; }
   #tip { position: fixed; z-index: 5; pointer-events: none; max-width: 320px;
     background: var(--panel); color: var(--ink); border: 1px solid var(--line);
     border-radius: 8px; padding: 8px 12px; font-size: 13px; line-height: 1.4;
@@ -175,7 +180,8 @@ nodes.forEach(n => {
   n.x = c.x + Math.cos(a) * rad; n.y = c.y + Math.sin(a) * rad;
 });
 document.getElementById('stats').innerHTML =
-  `<b>${nodes.length}</b> ideas · <b>${edges.length}</b> links · ${DATA.papers} papers`;
+  `<b>${nodes.length}</b> ideas · <b>${edges.length}</b> links · ${
+    DATA.paperCount} papers`;
 
 // ---- force simulation ----
 // Declared here, not with the other pointer state below: tick() reads it and
@@ -394,6 +400,27 @@ canvas.addEventListener('wheel', e => {
 
 const esc = s => s.replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// The papers an idea came from: PubMed records link out by PMID, locally
+// ingested documents link to their page in the vault beside this file.
+function papersSection(n) {
+  const cites = n.cites || [];
+  if (!cites.length) return '';
+  const rows = cites.map(c => {
+    const meta = (DATA.paperMeta || {})[c.id] || {};
+    const title = esc(meta.title || c.id);
+    const sub = [meta.journal, meta.year].filter(Boolean).map(esc).join(' · ');
+    const href = meta.local
+      ? `papers/${encodeURIComponent(c.id)}/paper.md`
+      : `https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(c.id)}/`;
+    return `<a class="rel paper" href="${href}"${meta.local ? '' :
+      ' target="_blank" rel="noopener"'}>
+      <span class="kind">${esc(c.relation)}${meta.local ? ' · local file'
+        : ' · PMID ' + esc(c.id)}</span><br>${title}
+      ${sub ? `<span class="sub">${sub}</span>` : ''}</a>`;
+  }).join('');
+  return `<h3>${cites.length} source paper${cites.length === 1 ? '' : 's'}</h3>${rows}`;
+}
+
 const panel = document.getElementById('panel');
 function select(n) {
   selected = n;
@@ -411,16 +438,16 @@ function select(n) {
           style="background:${C.s[slotOf(n.domain)]}"></span>${esc(n.domain)}</span>
         <span class="tag">${esc(n.type)}</span>
         <span class="tag">level ${n.level}</span>
-        <span class="tag">${n.papers} paper${n.papers === 1 ? '' : 's'}</span>
       </div>
+      ${papersSection(n)}
       <h3>${n.deg} connected idea${n.deg === 1 ? '' : 's'}</h3>${rels}`;
   }
   draw();
 }
 panel.addEventListener('click', e => {
   if (e.target.closest('.close')) select(null);
-  const b = e.target.closest('.rel');
-  if (b) { const n = byId.get(b.dataset.id); if (n) select(n); }
+  const b = e.target.closest('button.rel');   // paper links are anchors: let
+  if (b) { const n = byId.get(b.dataset.id); if (n) select(n); }  // them navigate
 });
 
 // ---- legend ----
