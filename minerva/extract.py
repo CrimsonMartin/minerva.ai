@@ -14,6 +14,46 @@ from .store import IDEA_RELATIONS, PAPER_RELATIONS, Vault
 
 PROMPTS = Path(__file__).parent / "prompts"
 
+# JSON schemas mirror the reply contracts in prompts/*.md; chat_json sends
+# them as response_format so capable servers constrain decoding to them.
+IDEA_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "statement": {"type": "string"},
+        "type": {"type": "string",
+                 "enum": ["mechanism", "method", "finding", "problem"]},
+        "relation_to_paper": {"type": "string", "enum": list(PAPER_RELATIONS)},
+        "domain": {"type": "string"},
+        "entities": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["statement", "type", "relation_to_paper", "domain", "entities"],
+    "additionalProperties": False,
+}
+
+EXTRACT_SCHEMA = {
+    "title": "extraction",
+    "type": "object",
+    "properties": {
+        "key_finding": {"type": "string"},
+        "ideas": {"type": "array", "items": IDEA_SCHEMA},
+    },
+    "required": ["key_finding", "ideas"],
+    "additionalProperties": False,
+}
+
+MERGE_SCHEMA = {
+    "title": "merge_decision",
+    "type": "object",
+    "properties": {
+        "decision": {"type": "string", "enum": ["merge", "link", "new"]},
+        "target": {"type": ["string", "null"]},
+        "relation": {"type": ["string", "null"]},
+        "note": {"type": "string"},
+    },
+    "required": ["decision", "target", "relation", "note"],
+    "additionalProperties": False,
+}
+
 
 def _prompt(name: str) -> str:
     return (PROMPTS / f"{name}.md").read_text()
@@ -27,7 +67,7 @@ def extract_ideas(llm: LLM, paper: dict) -> dict:
         f"MeSH terms: {', '.join(paper.get('mesh', []))}\n\n"
         f"Abstract:\n{paper['abstract']}"
     )
-    result = llm.chat_json(_prompt("extract"), user)
+    result = llm.chat_json(_prompt("extract"), user, EXTRACT_SCHEMA)
     ideas = []
     for raw in result.get("ideas", []):
         statement = (raw.get("statement") or "").strip()
@@ -139,7 +179,7 @@ def _adjudicate(
             f"    type: {existing['type']}  domain: {existing['domain']}  "
             f"level: {existing.get('level', 0)}"
         )
-    result = llm.chat_json(_prompt("merge"), "\n".join(lines))
+    result = llm.chat_json(_prompt("merge"), "\n".join(lines), MERGE_SCHEMA)
     if result.get("decision") not in ("merge", "link", "new"):
         result["decision"] = "new"
     # Guard: a link-only candidate can never be merged, whatever the model says.

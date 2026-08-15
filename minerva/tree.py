@@ -20,9 +20,21 @@ tree.md (readable outline with links) in the paper's folder.
 """
 
 from .embeddings import EmbeddingIndex
-from .extract import canonicalize, _prompt
+from .extract import IDEA_SCHEMA, canonicalize, _prompt
 from .llm import LLM
 from .store import PAPER_RELATIONS, Vault
+
+SUMMARIZE_SCHEMA = {
+    "title": "node_summary",
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "key_finding": {"type": "string"},
+        "ideas": {"type": "array", "items": IDEA_SCHEMA},
+    },
+    "required": ["summary", "key_finding", "ideas"],
+    "additionalProperties": False,
+}
 
 
 # -------------------------------------------------------------- paragraphs
@@ -173,7 +185,8 @@ def _content(node: dict) -> str:
 
 def _summarize(llm: LLM, content: str, level: int) -> dict:
     kind = "raw paragraphs from the paper" if level == 1 else "summaries of child sections"
-    result = llm.chat_json(_prompt("summarize"), f"Content ({kind}):\n\n{content}")
+    result = llm.chat_json(_prompt("summarize"), f"Content ({kind}):\n\n{content}",
+                           SUMMARIZE_SCHEMA)
     ideas = []
     for raw in result.get("ideas", []) or []:
         statement = (raw.get("statement") or "").strip()
