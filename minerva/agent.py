@@ -23,7 +23,8 @@ from .report import synthesize
 from .store import Vault, slugify
 
 
-def run_research(config: dict, topic: str, mode: str, budget: int) -> Path:
+def run_research(config: dict, topic: str, mode: str, budget: int,
+                 inputs: list[Path] | None = None) -> Path:
     llm = LLM(config)
     vault = Vault(vault_path(config))
     index = EmbeddingIndex(vault.root)
@@ -47,7 +48,11 @@ def run_research(config: dict, topic: str, mode: str, budget: int) -> Path:
     log = _make_logger(run_dir)
     log(f"run start · topic={topic!r} mode={mode} budget={budget}")
 
-    if len(frontier) == 0 and not frontier.visited:
+    for path in inputs or []:
+        _seed_from_input(config, llm, vault, index, frontier, notebook,
+                         Path(path), topic_vector, log)
+
+    if not frontier.visited:  # fresh run (not a resume) — seed from the topic too
         _seed(frontier, topic, config["pubmed"]["seed_results"], email, log)
 
     steps = 0
@@ -87,6 +92,35 @@ def run_research(config: dict, topic: str, mode: str, budget: int) -> Path:
 
 
 # ------------------------------------------------------------------ steps
+
+def _seed_from_input(config, llm, vault, index, frontier, notebook,
+                     path: Path, topic_vector, log) -> None:
+    """Ingest a local pdf/docx/txt file and seed the frontier with its ideas."""
+    from .ingest import IngestError, ingest_file
+
+    settings = config["ingest"]
+    try:
+        doc = ingest_file(
+            llm, vault, index, path, config["merge_threshold"],
+            chunk_chars=settings["chunk_chars"], max_chunks=settings["max_chunks"],
+            min_chars_per_page=settings["min_chars_per_page"],
+        )
+    except IngestError as exc:
+        log(f"input skipped: {exc}")
+        return
+    cached = " (already in vault)" if doc["cached"] else ""
+    log(f"input {path.name} → {doc['id']}{cached}, {len(doc['slugs'])} ideas")
+    for finding in doc["findings"]:
+        notebook.note(finding, [doc["id"]], via=path.name)
+    for slug in doc["slugs"]:
+        idea = vault.load_idea(slug)
+        vector = index.get(f"idea:{slug}")
+        relevance = cosine(vector, topic_vector) if vector else 0.5
+        # The user handed us this document as the research base — its ideas
+        # should be explored before anything a seed query turns up.
+        frontier.push("idea", slug, max(relevance, 0.9), [idea["domain"]],
+                      f"research base: {path.name}")
+
 
 def _seed(frontier: Frontier, topic: str, retmax: int, email: str, log) -> None:
     pmids = pubmed.search(topic, retmax=retmax, email=email)

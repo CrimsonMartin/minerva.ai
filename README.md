@@ -76,6 +76,30 @@ python -m minerva research "predator-prey oscillation models" --mode breadth --b
 python -m minerva ideas                # list the idea network by paper count
 ```
 
+### Local files as the research base
+
+Hand the agent your own documents — a manuscript draft, a review PDF,
+notes — and it decomposes them into ideas first, links them into the
+network as `local-<hash>` papers, and explores outward from *their*
+ideas before anything the topic search finds:
+
+```bash
+python -m minerva research "ferroptosis" --mode depth --input draft.docx --input review.pdf
+python -m minerva ingest paper1.pdf paper2.docx    # add to the vault without a run
+```
+
+Supported: `.pdf`, `.docx`, `.txt`, `.md`. Digital PDFs are read via
+their text layer (pypdf). Scanned PDFs fall back to **PaddleOCR** —
+that's optional and only needed for scans:
+
+```bash
+pip install paddlepaddle paddleocr
+```
+
+Ingest is chunked (config `ingest.chunk_chars` / `max_chunks`) so long
+documents stay within a local model's comfortable context, and the same
+file bytes are never processed twice.
+
 Watch a run live: `tail -f vault/runs/<run>/log.md` — or just open
 `notebook.md` in your editor and watch findings accumulate.
 
