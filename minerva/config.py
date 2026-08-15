@@ -2,18 +2,22 @@
 
 Config lives in minerva.config.json at the repo/working root so it is
 editable by hand like everything else. `python -m minerva init` writes
-the default file.
+the default file. LLM connection settings can also come from the
+environment (or a `.env` file at the root) via the MINERVA_LLM_*
+variables — those win over the JSON file, so a `.env` can point one
+checkout at a different LM Studio host/model without touching config.
 """
 
 import json
+import os
 from pathlib import Path
 
 DEFAULT_CONFIG = {
     "llm": {
-        "base_url": "http://localhost:11434/v1",
-        "api_key": "local",
-        "chat_model": "qwen3:14b",
-        "embed_model": "nomic-embed-text",
+        "base_url": "http://localhost:1234/v1",
+        "api_key": "lm-studio",
+        "chat_model": "qwen/qwen3-14b",
+        "embed_model": "text-embedding-nomic-embed-text-v1.5",
         "temperature": 0.2,
         "max_tokens": 3000,
         "timeout_seconds": 300,
@@ -44,6 +48,14 @@ DEFAULT_CONFIG = {
 
 CONFIG_FILENAME = "minerva.config.json"
 
+# Environment variable → path into the config dict.
+ENV_OVERRIDES = {
+    "MINERVA_LLM_BASE_URL": ("llm", "base_url"),
+    "MINERVA_LLM_API_KEY": ("llm", "api_key"),
+    "MINERVA_LLM_CHAT_MODEL": ("llm", "chat_model"),
+    "MINERVA_LLM_EMBED_MODEL": ("llm", "embed_model"),
+}
+
 
 def _merge(base: dict, override: dict) -> dict:
     out = dict(base)
@@ -55,12 +67,32 @@ def _merge(base: dict, override: dict) -> dict:
     return out
 
 
+def _read_dotenv(root: Path) -> dict[str, str]:
+    """Parse KEY=VALUE lines from `.env` (no export, quotes optional)."""
+    path = root / ".env"
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip("'\"")
+    return values
+
+
 def load_config(root: Path | None = None) -> dict:
     root = root or Path.cwd()
     path = root / CONFIG_FILENAME
     config = DEFAULT_CONFIG
     if path.exists():
         config = _merge(DEFAULT_CONFIG, json.loads(path.read_text()))
+    dotenv = _read_dotenv(root)
+    for env_key, (section, key) in ENV_OVERRIDES.items():
+        value = os.environ.get(env_key, dotenv.get(env_key))
+        if value:
+            config = _merge(config, {section: {key: value}})
     config["_root"] = str(root)
     return config
 
