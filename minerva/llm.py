@@ -1,4 +1,4 @@
-"""Thin client for any OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp).
+"""Thin client for any OpenAI-compatible endpoint (LM Studio, vLLM, llama.cpp, Ollama).
 
 Every call is a single-purpose request. Local models do far better with
 many small, schema-constrained calls than one long agentic context, so
