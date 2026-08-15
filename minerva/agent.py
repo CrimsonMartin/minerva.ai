@@ -25,14 +25,17 @@ from .store import Vault, slugify
 
 
 def run_research(config: dict, topic: str, mode: str, budget: int,
-                 inputs: list[Path] | None = None) -> Path:
+                 inputs: list[Path] | None = None,
+                 resume: bool | None = None) -> Path:
+    """resume=True continues the latest run for this topic+mode, resume=False
+    forces a fresh run dir even when one exists for the topic, and None keeps
+    the default (a same-day rerun of a topic implicitly resumes it)."""
     llm = make_llm(config)
     vault = Vault(vault_path(config))
     index = EmbeddingIndex(vault.root)
     email = config["pubmed"]["email"]
 
-    stamp = datetime.date.today().strftime("%Y%m%d")
-    run_dir = vault.runs_dir / f"{stamp}-{slugify(topic)[:40]}-{mode}"
+    run_dir, note = _select_run_dir(vault.runs_dir, topic, mode, resume)
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "run.json").write_text(
         json.dumps({"topic": topic, "mode": mode, "budget": budget}, indent=2) + "\n"
@@ -48,6 +51,8 @@ def run_research(config: dict, topic: str, mode: str, budget: int,
 
     log = _make_logger(run_dir)
     log(f"run start · topic={topic!r} mode={mode} budget={budget}")
+    if note:
+        log(note)
 
     for path in inputs or []:
         _seed_from_input(config, llm, vault, index, frontier, notebook,
@@ -90,6 +95,52 @@ def run_research(config: dict, topic: str, mode: str, budget: int,
     report_path = synthesize(llm, vault, notebook, run_dir, topic, mode)
     log(f"report written: {report_path}")
     return report_path
+
+
+# ---------------------------------------------------------- run selection
+
+def _select_run_dir(runs_dir: Path, topic: str, mode: str,
+                    resume: bool | None) -> tuple[Path, str]:
+    """Pick the run dir for this session, plus a log note about the choice.
+
+    Everything a run needs to continue (frontier, notebook, log) lives in
+    the dir and reloads from disk, so resuming is just pointing here at an
+    existing one.
+    """
+    stamp = datetime.date.today().strftime("%Y%m%d")
+    default = runs_dir / f"{stamp}-{slugify(topic)[:40]}-{mode}"
+    if resume is True:
+        latest = _latest_matching_run(runs_dir, topic, mode)
+        if latest is not None:
+            return latest, f"resuming earlier run {latest.name}"
+        return default, "no earlier run for this topic+mode — starting fresh"
+    if resume is False:
+        candidate, n = default, 2
+        while candidate.exists():
+            candidate = default.with_name(f"{default.name}-{n}")
+            n += 1
+        if candidate != default:
+            return candidate, f"{default.name} exists — starting duplicate run {candidate.name}"
+        return candidate, ""
+    return default, ""
+
+
+def _latest_matching_run(runs_dir: Path, topic: str, mode: str) -> Path | None:
+    """Most recent run dir whose recorded topic+mode match (by topic slug)."""
+    slug = slugify(topic)[:40]
+    matches = []
+    for run_dir in runs_dir.iterdir() if runs_dir.exists() else []:
+        run_json = run_dir / "run.json"
+        if not run_json.exists():
+            continue
+        try:
+            recorded = json.loads(run_json.read_text())
+        except (ValueError, OSError):
+            continue
+        if recorded.get("mode") == mode and slugify(recorded.get("topic", ""))[:40] == slug:
+            matches.append(run_dir)
+    # Names start with a YYYYMMDD stamp, so lexicographic order is chronological.
+    return max(matches, key=lambda p: p.name) if matches else None
 
 
 # ------------------------------------------------------------------ steps
