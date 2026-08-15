@@ -165,6 +165,9 @@ document.getElementById('stats').innerHTML =
   `<b>${nodes.length}</b> ideas · <b>${edges.length}</b> links · ${DATA.papers} papers`;
 
 // ---- force simulation ----
+// Declared here, not with the other pointer state below: tick() reads it and
+// runs during warm-up, before that block would be initialized.
+let dragNode = null;
 function tick(alpha) {
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i];
@@ -283,7 +286,7 @@ function hit(px, py) {
   }
   return best;
 }
-let dragNode = null, panning = false, moved = false, last = null;
+let panning = false, moved = false, last = null;
 const tip = document.getElementById('tip');
 canvas.addEventListener('pointerdown', e => {
   last = { x: e.clientX, y: e.clientY }; moved = false;
