@@ -96,6 +96,11 @@
   a.rel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .rel .sub { display: block; color: var(--ink-3); font-size: 11.5px;
     margin-top: 2px; }
+  .showmore { display: block; width: 100%; margin-top: 6px; padding: 7px;
+    background: none; border: 1px dashed var(--line); border-radius: 6px;
+    color: var(--ink-2); font: 12px system-ui, sans-serif; cursor: pointer; }
+  .showmore:hover { color: var(--ink); border-color: var(--ink-3); }
+  .showmore:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   #tip { position: fixed; z-index: 5; pointer-events: none; max-width: 320px;
     background: var(--panel); color: var(--ink); border: 1px solid var(--line);
     border-radius: 8px; padding: 8px 12px; font-size: 13px; line-height: 1.4;
@@ -546,8 +551,20 @@ function papersSection(n) {
       <span class="kind">${esc(c.relation)}${meta.local ? ' · local file'
         : ' · PMID ' + esc(c.id)}</span><br>${title}
       ${sub ? `<span class="sub">${sub}</span>` : ''}</a>`;
-  }).join('');
-  return `<h3>${cites.length} source paper${cites.length === 1 ? '' : 's'}</h3>${rows}`;
+  });
+  return `<h3>${cites.length} source paper${cites.length === 1 ? '' : 's'}</h3>` +
+    collapsible(rows, 'papers');
+}
+
+const PREVIEW = 3;   // rows shown before "show more"
+
+/** Wrap ranked rows so only the top few show until the reader asks for more. */
+function collapsible(rows, key) {
+  if (rows.length <= PREVIEW) return rows.join('');
+  const rest = rows.length - PREVIEW;
+  return rows.slice(0, PREVIEW).join('') +
+    `<div class="more" data-key="${key}" hidden>${rows.slice(PREVIEW).join('')}</div>
+     <button class="showmore" data-key="${key}">Show ${rest} more</button>`;
 }
 
 // Nearest ideas by embedding, whether or not the graph links them — this one
@@ -560,15 +577,13 @@ function similarSection(n) {
   for (let d = 0; d < dims; d++) q[d] = buf[i * dims + d] / 127;
   const near = [...scoreAgainst(q)]
     .filter(([m]) => m !== n && !neighbors.get(n).has(m))
-    .sort((a, b) => b[1] - a[1]).slice(0, 5)
-    // Above the typical nearest-neighbour similarity for this model, so the
-    // list means "unusually close", not just "closest available".
-    .filter(([, s]) => s > .78);
+    .sort((a, b) => b[1] - a[1]).slice(0, 25);
   if (!near.length) return '';
-  return `<h3>similar, not linked</h3>` + near.map(([m, s]) =>
+  const rows = near.map(([m, s]) =>
     `<button class="rel" data-id="${esc(m.id)}">
        <span class="kind">${s.toFixed(2)} · ${esc(m.domain)}</span><br>
-       ${esc(m.statement)}</button>`).join('');
+       ${esc(m.statement)}</button>`);
+  return `<h3>similar, not linked</h3>` + collapsible(rows, 'similar');
 }
 
 function select(n, { focus = true } = {}) {
@@ -578,11 +593,21 @@ function select(n, { focus = true } = {}) {
   if (n && focus) focusNode(n);
   else if (had !== panel.classList.contains('open')) fitView();
   if (n) {
-    const rels = edges.filter(e => e.a === n || e.b === n).map(e => {
+    // One row per connected idea (an idea can be reached by more than one
+    // edge), structural relations first, so the rows match the heading count.
+    const order = { part_of: 0, analogous_to: 1, causes: 2, enables: 3, related_to: 4 };
+    const best = new Map();
+    for (const e of edges) {
+      if (e.a !== n && e.b !== n) continue;
       const other = e.a === n ? e.b : e.a;
-      return `<button class="rel" data-id="${esc(other.id)}">
-        <span class="kind">${e.rel}</span><br>${esc(other.statement)}</button>`;
-    }).join('');
+      const prev = best.get(other);
+      if (!prev || (order[e.rel] ?? 9) < (order[prev] ?? 9)) best.set(other, e.rel);
+    }
+    const rels = collapsible([...best]
+      .sort((x, y) => (order[x[1]] ?? 9) - (order[y[1]] ?? 9))
+      .map(([other, rel]) =>
+        `<button class="rel" data-id="${esc(other.id)}">
+          <span class="kind">${rel}</span><br>${esc(other.statement)}</button>`), 'links');
     document.getElementById('panel-body').innerHTML = `
       <h2>${esc(n.statement)}</h2>
       <div class="meta">
@@ -599,6 +624,12 @@ function select(n, { focus = true } = {}) {
 }
 panel.addEventListener('click', e => {
   if (e.target.closest('.close')) select(null);
+  const more = e.target.closest('.showmore');
+  if (more) {
+    panel.querySelector(`.more[data-key="${more.dataset.key}"]`).hidden = false;
+    more.remove();
+    return;
+  }
   const b = e.target.closest('button.rel');   // paper links are anchors: let
   if (b) { const n = byId.get(b.dataset.id); if (n) select(n); }  // them navigate
 });
