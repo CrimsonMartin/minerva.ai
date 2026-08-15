@@ -27,6 +27,10 @@ def main(argv: list[str] | None = None) -> int:
     research.add_argument("--input", action="append", default=[], metavar="FILE",
                           help="local .pdf/.docx/.txt/.md to ingest as the research "
                                "base (repeatable); its ideas seed the frontier")
+    research.add_argument("--seed-idea", action="append", default=[], metavar="SLUG",
+                          help="existing vault idea to start exploring from "
+                               "(repeatable); explored before anything the topic "
+                               "search finds")
     fresh_or_resume = research.add_mutually_exclusive_group()
     fresh_or_resume.add_argument("--resume", action="store_true",
                                  help="continue the most recent run for this topic and "
@@ -58,7 +62,8 @@ def main(argv: list[str] | None = None) -> int:
         from .agent import run_research
         resume = True if args.resume else False if args.new else None
         report = run_research(config, args.topic, args.mode, args.budget,
-                              inputs=[Path(p) for p in args.input], resume=resume)
+                              inputs=[Path(p) for p in args.input], resume=resume,
+                              seed_ideas=args.seed_idea)
         print(f"\nreport: {report}")
         return 0
 

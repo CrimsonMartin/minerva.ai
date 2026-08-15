@@ -39,7 +39,8 @@ REFLECT_SCHEMA = {
 
 def run_research(config: dict, topic: str, mode: str, budget: int,
                  inputs: list[Path] | None = None,
-                 resume: bool | None = None) -> Path:
+                 resume: bool | None = None,
+                 seed_ideas: list[str] | None = None) -> Path:
     """resume=True continues the latest run for this topic+mode, resume=False
     forces a fresh run dir even when one exists for the topic, and None keeps
     the default (a same-day rerun of a topic implicitly resumes it)."""
@@ -70,6 +71,16 @@ def run_research(config: dict, topic: str, mode: str, budget: int,
     for path in inputs or []:
         _seed_from_input(config, llm, vault, index, frontier, notebook,
                          Path(path), topic_vector, log)
+
+    for slug in seed_ideas or []:
+        if not vault.has_idea(slug):
+            log(f"seed idea not in vault, skipping: {slug}")
+            continue
+        idea = vault.load_idea(slug)
+        log(f"seed idea: {idea['statement'][:80]} [{slug}]")
+        # The user chose this node as the starting point — explore it before
+        # anything the topic search finds (same precedence as --input ideas).
+        frontier.push("idea", slug, 1.0, [idea["domain"]], "seed idea")
 
     if not frontier.visited:  # fresh run (not a resume) — seed from the topic too
         _seed(frontier, topic, config["pubmed"]["seed_results"], email, log)

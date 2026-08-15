@@ -154,6 +154,23 @@ fresh directory (suffixed `-2`, `-3`, … when needed) while still sharing
 the vault's idea network. Without either flag, rerunning the same topic on
 the same day implicitly resumes it; on a later day it starts a new run.
 
+### Drilling into an existing idea
+
+`--resume` continues a question; `--seed-idea` asks a *new* question that
+starts exploring from a chosen node of the shared graph. The new topic
+re-centers the frontier's relevance scoring on the sub-idea (resuming
+keeps the old topic's center of gravity), and the run gets its own
+notebook and report — while everything it finds still canonicalizes into
+the same vault:
+
+```bash
+python -m minerva research "RSL3 inhibition of GPX4" --mode depth \
+    --seed-idea rsl3-covalently-inhibits-the-gpx4-selenocysteine-1a2b3c
+```
+
+The slug is the idea's folder name under `vault/ideas/` (also shown by
+`minerva ideas` and the graph page's detail panel).
+
 ### Local files as the research base
 
 Hand the agent your own documents — a manuscript draft, a review PDF,
