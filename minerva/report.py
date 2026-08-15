@@ -3,22 +3,34 @@
 from pathlib import Path
 
 from .extract import _prompt
-from .llm import LLM
+from .llm import LLM, LLMError
 from .notebook import Notebook
 from .store import Vault
 
 
 def synthesize(llm: LLM, vault: Vault, notebook: Notebook, run_dir: Path,
-               topic: str, mode: str) -> Path:
+               topic: str, mode: str, log=None) -> Path:
+    log = log or (lambda message: None)
     path = run_dir / "report.md"
     ideas = _idea_summary(vault, limit=40)
+    log(f"synthesizing report from {len(notebook.findings)} finding(s) and "
+        f"{len(vault.list_ideas())} idea(s) — one long call, may take minutes")
     user = (
         f"Topic: {topic}\nMode: {mode}\n\n"
         f"Findings notebook:\n{notebook.as_text() or '(empty)'}\n\n"
         f"Idea network (statement · type · domain · paper count · relations):\n{ideas}"
     )
     try:
-        report = llm.chat(_prompt("synthesize"), user)
+        # The synthesis is one big call where reasoning quality matters most —
+        # it may use a different model or request options than the small calls.
+        report = llm.chat(_prompt("synthesize"), user,
+                          model=getattr(llm, "report_model", None),
+                          extra_body=getattr(llm, "report_extra_body", None))
+        if not report.strip():
+            # A reasoning model that burns its whole token budget thinking
+            # returns empty content — that's a failure, not a report.
+            raise LLMError("synthesis returned no content (max_tokens too "
+                           "small for a reasoning model?)")
     except Exception as exc:  # never lose a run's findings to a bad last call
         report = (
             f"# {topic} — synthesis failed\n\n"
