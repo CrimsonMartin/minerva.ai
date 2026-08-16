@@ -28,7 +28,8 @@ class MockLLM:
     # -------------------------------------------------------------- chat
 
     def chat(self, system: str, user: str, response_format: dict | None = None,
-             model: str | None = None, extra_body: dict | None = None) -> str:
+             model: str | None = None, extra_body: dict | None = None,
+             timeout: float | None = None) -> str:
         if "condensing one node" in system:
             return json.dumps(self._summarize(user))
         if "Extract the CORE IDEAS" in system:

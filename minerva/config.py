@@ -36,6 +36,10 @@ DEFAULT_CONFIG = {
         # or long structured replies get truncated mid-JSON.
         "max_tokens": 8192,
         "timeout_seconds": 300,
+        # The synthesis is one long call over the whole idea network — it
+        # legitimately runs many minutes on a local model, so it gets its
+        # own, much larger timeout than the small structured calls.
+        "report_timeout_seconds": 2400,
     },
     # Vaults are independent knowledge graphs, one subdirectory each under
     # vaults_dir. Pick one per invocation with --vault or MINERVA_VAULT.

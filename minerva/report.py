@@ -39,18 +39,27 @@ def synthesize(llm: LLM, vault: Vault, notebook: Notebook, run_dir: Path,
         # it may use a different model or request options than the small calls.
         report = llm.chat(_prompt("synthesize"), user,
                           model=getattr(llm, "report_model", None),
-                          extra_body=getattr(llm, "report_extra_body", None))
+                          extra_body=getattr(llm, "report_extra_body", None),
+                          timeout=getattr(llm, "report_timeout", None))
         if not report.strip():
             # A reasoning model that burns its whole token budget thinking
             # returns empty content — that's a failure, not a report.
             raise LLMError("synthesis returned no content (max_tokens too "
                            "small for a reasoning model?)")
     except Exception as exc:  # never lose a run's findings to a bad last call
-        report = (
+        note = (
             f"# {topic} — synthesis failed\n\n"
             f"The synthesis call failed ({exc}). The raw findings are in "
             f"notebook.md and the idea network is in the vault's ideas/ folder.\n"
         )
+        # A failed re-synthesis must not destroy the report a previous run
+        # produced; leave it in place and record the failure beside it.
+        if path.exists():
+            (run_dir / "report.failed.md").write_text(note)
+            log(f"synthesis failed, keeping the existing report: {exc}")
+            return path
+        path.write_text(note)
+        return path
     path.write_text(report if report.endswith("\n") else report + "\n")
     try:  # a bad PDF render must never lose the markdown report
         pdf = render_pdf(path)
