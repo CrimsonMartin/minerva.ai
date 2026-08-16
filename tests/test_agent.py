@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 
 from minerva import agent, pubmed
-from minerva.config import DEFAULT_CONFIG, _merge
+from minerva.config import DEFAULT_CONFIG, _merge, vault_path
 from minerva.ingest import extract_text
 from minerva.llm import _extract_json
 from minerva.store import Vault
@@ -45,7 +45,7 @@ def test_full_run_merges_shared_idea_abstract_path():
                                      "pubmed": {"full_text": False}})
     report = agent.run_research(config, "ferroptosis", "depth", 8)
 
-    vault = Vault(Path(tmp) / "vault")
+    vault = Vault(vault_path(config))
     assert set(vault.list_papers()) == {"111", "222"}, vault.list_papers()
     # The shared sentence is one idea node carrying both papers.
     shared_nodes = [s for s in vault.list_ideas()
@@ -85,6 +85,33 @@ def test_resume_and_new_run_selection():
     latest = agent._latest_matching_run(first.parent, "ferroptosis", "depth")
     assert latest == fresh, (latest, fresh)
     print(f"  run selection: resume reuses {first.name}, new forks {fresh.name}")
+
+
+def test_vault_selection_and_legacy_migration():
+    tmp = Path(tempfile.mkdtemp())
+    config = _merge(DEFAULT_CONFIG, {"_root": str(tmp)})
+    # Vaults are named subdirectories of vaults/; the config picks the active one.
+    assert vault_path(config) == tmp / "vaults" / "main"
+    assert vault_path(config, "oncology") == tmp / "vaults" / "oncology"
+    assert vault_path(_merge(config, {"vault": "ecology"})) == tmp / "vaults" / "ecology"
+    # A pre-multi-vault layout (top-level vault/) is adopted as vaults/main.
+    (tmp / "vault" / "papers" / "111").mkdir(parents=True)
+    path = vault_path(config)
+    assert path == tmp / "vaults" / "main" and (path / "papers" / "111").is_dir()
+    assert not (tmp / "vault").exists()
+    print("  vaults: named subdirectories, legacy vault/ migrated to vaults/main")
+
+
+def test_report_pdf_rendering():
+    from minerva.pdf import render_pdf
+    md = Path(tempfile.mkdtemp()) / "report.md"
+    md.write_text("# Title\n\nSome **findings** [PMID 111].\n\n## Section\n\nMore.\n")
+    out = render_pdf(md)
+    if out is None:  # optional dependency not installed — skipping is the contract
+        print("  pdf: markdown-pdf not installed, render skipped gracefully")
+        return
+    assert out == md.with_suffix(".pdf") and out.read_bytes()[:5] == b"%PDF-"
+    print("  pdf: report.md rendered to report.pdf")
 
 
 def test_breadth_vs_depth_scoring():

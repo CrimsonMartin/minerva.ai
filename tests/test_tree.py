@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from minerva import pubmed
-from minerva.config import DEFAULT_CONFIG, _merge
+from minerva.config import DEFAULT_CONFIG, _merge, vault_path
 from minerva.embeddings import EmbeddingIndex
 from minerva.ingest import ingest_file
 from minerva.mock import MockLLM
@@ -130,7 +130,7 @@ def test_full_run_with_pmc_fulltext():
                                      "llm": {"chat_model": "mock", "embed_model": "mock"}})
     report = agent.run_research(config, "ferroptosis in cancer therapy", "depth", 6)
 
-    vault = Path(tmp) / "vault"
+    vault = vault_path(config)
     assert (vault / "papers" / "555" / "tree.json").exists(), "full-text tree not built"
     assert (vault / "papers" / "555" / "fulltext.md").exists()
     ideas = list((vault / "ideas").iterdir())

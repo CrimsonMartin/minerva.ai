@@ -37,7 +37,10 @@ DEFAULT_CONFIG = {
         "max_tokens": 8192,
         "timeout_seconds": 300,
     },
-    "vault": "vault",
+    # Vaults are independent knowledge graphs, one subdirectory each under
+    # vaults_dir. Pick one per invocation with --vault or MINERVA_VAULT.
+    "vaults_dir": "vaults",
+    "vault": "main",
     "pubmed": {
         # NCBI asks that E-utilities requests carry a contact address; set
         # MINERVA_PUBMED_EMAIL (environment or .env) to yours.
@@ -63,8 +66,9 @@ DEFAULT_CONFIG = {
     },
 }
 
-# Environment variable → path into the config dict.
+# Environment variable → path into the config dict (1 or 2 keys deep).
 ENV_OVERRIDES = {
+    "MINERVA_VAULT": ("vault",),
     "MINERVA_LLM_BASE_URL": ("llm", "base_url"),
     "MINERVA_LLM_API_KEY": ("llm", "api_key"),
     "MINERVA_LLM_CHAT_MODEL": ("llm", "chat_model"),
@@ -106,15 +110,36 @@ def load_config(root: Path | None = None) -> dict:
     root = root or Path.cwd()
     config = dict(DEFAULT_CONFIG)  # never hand back the module-level dict itself
     dotenv = _read_dotenv(root)
-    for env_key, (section, key) in ENV_OVERRIDES.items():
+    for env_key, path in ENV_OVERRIDES.items():
         value = os.environ.get(env_key, dotenv.get(env_key))
         if value:
-            if isinstance(DEFAULT_CONFIG[section][key], dict):
+            default = DEFAULT_CONFIG
+            for key in path:
+                default = default[key]
+            if isinstance(default, dict):
                 value = json.loads(value)  # dict-valued settings are JSON in env
-            config = _merge(config, {section: {key: value}})
+            override = value
+            for key in reversed(path):
+                override = {key: override}
+            config = _merge(config, override)
     config["_root"] = str(root)
     return config
 
 
-def vault_path(config: dict) -> Path:
-    return Path(config["_root"]) / config["vault"]
+def vaults_root(config: dict) -> Path:
+    return Path(config["_root"]) / config["vaults_dir"]
+
+
+def vault_path(config: dict, name: str | None = None) -> Path:
+    """Resolve a vault by name (default: the active vault from config).
+
+    Each vault is its own subdirectory of `vaults_dir`. A pre-multi-vault
+    layout — a single top-level `vault/` folder — is adopted by moving it
+    to `vaults/main` the first time the default vault is resolved.
+    """
+    path = vaults_root(config) / (name or config["vault"])
+    legacy = Path(config["_root"]) / "vault"
+    if not path.exists() and path.name == "main" and legacy.is_dir():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        legacy.rename(path)
+    return path

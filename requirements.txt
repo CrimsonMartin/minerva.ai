@@ -1,3 +1,5 @@
 requests
 pypdf
 sentence-transformers
+# Optional — PDF rendering of reports (`minerva pdf`, automatic report.pdf):
+# markdown-pdf

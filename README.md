@@ -46,10 +46,13 @@ Full text comes from **PubMed Central** when a paper is open-access
 agent falls back to the abstract. Local files (`--input`) go through the
 same tree builder. Toggle full text with `pubmed.full_text` in config.
 
-## The vault — the folder structure is the network
+## Vaults — the folder structure is the network
+
+A vault is one independent knowledge graph. You can keep several —
+one per research programme — each in its own subdirectory of `vaults/`:
 
 ```
-vault/
+vaults/<name>/
   papers/<pmid>/paper.json    one paper (source of truth)
   papers/<pmid>/paper.md      readable view → links to its core ideas
   ideas/<slug>/idea.json      one canonical idea across ALL papers
@@ -58,8 +61,17 @@ vault/
   runs/<date-topic-mode>/     one research session
     run.json  frontier.json   config + resumable explore queue
     notebook.md  log.md       findings (cited) + live activity log
-    report.md                 the final synthesized, cited report
+    report.md  report.pdf     the final synthesized, cited report
+                              (.pdf only when markdown-pdf is installed)
 ```
+
+Every command works in one vault: `--vault NAME` (or `MINERVA_VAULT` in
+the environment/`.env`) picks it, `main` is the default, and a vault is
+created on first use. `minerva vaults` lists them with their sizes.
+Papers, ideas, embeddings, and runs never cross vault boundaries — which
+also means the same idea in two vaults is two separate nodes.
+A pre-multi-vault layout (a single top-level `vault/` folder) is adopted
+automatically: it is moved to `vaults/main` the first time it's needed.
 
 Ideas are typed (`mechanism`, `method`, `finding`, `problem`) and linked
 by typed edges (`part_of`, `causes`, `enables`, `analogous_to`, …).
@@ -128,10 +140,29 @@ if you ever change the embed model, start a fresh vault.
 ```bash
 python -m minerva research "ferroptosis in cancer therapy" --mode depth --budget 50
 python -m minerva research "predator-prey oscillation models" --mode breadth --budget 80
+python -m minerva --vault ecology research "predator-prey oscillation models" \
+                                       # same command, separate knowledge graph
+python -m minerva vaults               # list vaults with paper/idea counts
 python -m minerva ideas                # list the idea network by paper count
 python -m minerva graph                # render the network as an interactive
-                                       # self-contained vault/graph.html
+                                       # self-contained <vault>/graph.html
 ```
+
+### PDF reports
+
+Runs always end in a markdown `report.md` — that stays the source of
+truth (greppable, linkable, Obsidian-friendly). If the optional
+`markdown-pdf` package is installed, every synthesis *also* writes a
+`report.pdf` next to it, and `minerva pdf FILE...` renders any markdown
+file (an old report, a paper.md) on demand:
+
+```bash
+pip install markdown-pdf               # one package: markdown-it-py + PyMuPDF,
+                                       # plain wheels, no system dependencies
+python -m minerva pdf vaults/main/runs/<run>/report.md
+```
+
+Without it, PDF rendering is skipped with a hint and nothing else changes.
 
 The graph page searches by **meaning**, with no server involved: rendering
 re-embeds every idea with a small sentence model (all-MiniLM-L6-v2) and
@@ -151,7 +182,7 @@ model, so they are consistent with each other.
 
 ### Resuming vs. duplicating a run
 
-Every run lives in its own `vault/runs/<date-topic-mode>/` directory, and
+Every run lives in its own `<vault>/runs/<date-topic-mode>/` directory, and
 everything a run needs to continue (frontier queue, notebook, log) reloads
 from that directory. Two flags control which directory a `research`
 command uses:
@@ -184,7 +215,7 @@ python -m minerva research "RSL3 inhibition of GPX4" --mode depth \
     --seed-idea rsl3-covalently-inhibits-the-gpx4-selenocysteine-1a2b3c
 ```
 
-The slug is the idea's folder name under `vault/ideas/` (also shown by
+The slug is the idea's folder name under `<vault>/ideas/` (also shown by
 `minerva ideas` and the graph page's detail panel).
 
 ### Local files as the research base
@@ -211,7 +242,7 @@ Ingest is chunked (config `ingest.chunk_chars` / `max_chunks`) so long
 documents stay within a local model's comfortable context, and the same
 file bytes are never processed twice.
 
-Watch a run live: `tail -f vault/runs/<run>/log.md` — or just open
+Watch a run live: `tail -f vaults/main/runs/<run>/log.md` — or just open
 `notebook.md` in your editor and watch findings accumulate.
 
 ### Sandboxed (bubblewrap)
