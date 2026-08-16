@@ -48,6 +48,7 @@ def run_research(config: dict, topic: str, mode: str, budget: int,
     vault = Vault(vault_path(config))
     index = EmbeddingIndex(vault.root, model=config["llm"]["embed_model"])
     email = config["pubmed"]["email"]
+    pubmed.configure(config["pubmed"].get("api_key", ""))
 
     run_dir, note = _select_run_dir(vault.runs_dir, topic, mode, resume)
     run_dir.mkdir(parents=True, exist_ok=True)

@@ -12,16 +12,41 @@ import xml.etree.ElementTree as ET
 import requests
 
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-_MIN_INTERVAL = 0.35  # stay under NCBI's 3 req/s unauthenticated limit
+# NCBI allows 3 requests/s anonymously and 10/s with a (free) API key.
+_ANON_INTERVAL = 0.35
+_KEYED_INTERVAL = 0.11
 _last_request = 0.0
+
+API_KEY = ""
+
+
+def configure(api_key: str = "") -> None:
+    """Set the NCBI API key used by every request from here on.
+
+    A key raises the rate limit from 3 to 10 requests/s, which matters
+    because graph walks fire searches in bursts.
+    """
+    global API_KEY
+    API_KEY = api_key or ""
 
 
 def _throttle() -> None:
     global _last_request
-    wait = _MIN_INTERVAL - (time.time() - _last_request)
+    interval = _KEYED_INTERVAL if API_KEY else _ANON_INTERVAL
+    wait = interval - (time.time() - _last_request)
     if wait > 0:
         time.sleep(wait)
     _last_request = time.time()
+
+
+def _credentials(email: str) -> dict:
+    """Contact address and API key, as E-utilities expects them."""
+    params = {}
+    if email:
+        params["email"] = email
+    if API_KEY:
+        params["api_key"] = API_KEY
+    return params
 
 
 def search(term: str, retmax: int = 20, email: str = "") -> list[str]:
@@ -33,9 +58,8 @@ def search(term: str, retmax: int = 20, email: str = "") -> list[str]:
         "retmax": retmax,
         "retmode": "json",
         "sort": "relevance",
+        **_credentials(email),
     }
-    if email:
-        params["email"] = email
     response = requests.get(f"{EUTILS}/esearch.fcgi", params=params, timeout=60)
     response.raise_for_status()
     return response.json()["esearchresult"].get("idlist", [])
@@ -46,9 +70,8 @@ def fetch(pmids: list[str], email: str = "") -> list[dict]:
     if not pmids:
         return []
     _throttle()
-    params = {"db": "pubmed", "id": ",".join(pmids), "retmode": "xml"}
-    if email:
-        params["email"] = email
+    params = {"db": "pubmed", "id": ",".join(pmids), "retmode": "xml",
+              **_credentials(email)}
     response = requests.get(f"{EUTILS}/efetch.fcgi", params=params, timeout=120)
     response.raise_for_status()
     return _parse_efetch(response.text)
@@ -63,9 +86,8 @@ def fetch_fulltext(pmid: str, email: str = "") -> list[dict] | None:
     there is no PMC record or no readable body (paywalled/abstract-only).
     """
     _throttle()
-    params = {"dbfrom": "pubmed", "db": "pmc", "id": pmid, "retmode": "json"}
-    if email:
-        params["email"] = email
+    params = {"dbfrom": "pubmed", "db": "pmc", "id": pmid, "retmode": "json",
+              **_credentials(email)}
     response = requests.get(f"{EUTILS}/elink.fcgi", params=params, timeout=60)
     response.raise_for_status()
     pmcid = None
@@ -78,9 +100,7 @@ def fetch_fulltext(pmid: str, email: str = "") -> list[dict] | None:
         return None
 
     _throttle()
-    params = {"db": "pmc", "id": pmcid, "retmode": "xml"}
-    if email:
-        params["email"] = email
+    params = {"db": "pmc", "id": pmcid, "retmode": "xml", **_credentials(email)}
     response = requests.get(f"{EUTILS}/efetch.fcgi", params=params, timeout=120)
     response.raise_for_status()
     paragraphs = parse_jats_body(response.text)
