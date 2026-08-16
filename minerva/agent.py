@@ -125,7 +125,7 @@ def run_research(config: dict, topic: str, mode: str, budget: int,
     log(f"run end · {steps} paper(s) read over {pops} frontier steps, "
         f"{len(notebook.findings)} findings, {len(vault.list_ideas())} ideas in vault")
     report_path = synthesize(llm, vault, notebook, run_dir, topic, mode, log=log,
-                             budget=budget)
+                             budget=budget, index=index)
     log(f"report written: {report_path}")
     return report_path
 

@@ -39,11 +39,18 @@ class MockLLM:
         if "planning half" in system:
             return json.dumps({"assessment": "mock: coverage looks sufficient",
                                "gaps": [], "queries": [], "done": True})
-        if "final report" in system:
+        if "split a research topic" in system:
+            topic = user.partition("Topic:")[2].strip()
+            # Split on commas/"and" the way a real decomposition would.
+            parts = [p.strip(" .") for p in re.split(r",| and ", topic) if p.strip()]
+            return json.dumps({"questions": parts[:5] or [topic]})
+        if "ONE section" in system:
             findings = [line for line in user.splitlines() if line.startswith("- ")]
-            return ("# Research report (mock model)\n\n"
-                    + "\n".join(findings)
-                    + "\n\n## Open questions\n\n(mock)\n\n## Sources\n(see notebook)\n")
+            return ("Mock section body.\n" + "\n".join(findings[:3])
+                    + "\n\n**Contradictions and gaps:** (mock)")
+        if "executive summary" in system:
+            return ("Mock executive summary of the report.\n\n"
+                    "## Open questions\n\n- What next? (mock)")
         return "mock reply"
 
     def chat_json(self, system: str, user: str, schema: dict | None = None) -> dict:

@@ -1,51 +1,66 @@
-"""Final synthesis: notebook + idea network -> a cited markdown report."""
+"""Final synthesis: notebook + idea network -> a cited markdown report.
+
+The report is built the way a paper tree is built, but in reverse. A tree
+condenses a document bottom-up into one root; synthesis expands one topic
+top-down into its parts: the topic is split into the questions it asks,
+each question is written as its own section from the ideas nearest to it,
+and a last call writes the summary over the finished sections.
+
+Every call therefore sees one question's worth of material instead of the
+whole vault, which is what keeps a local model specific — the same reason
+the tree exists.
+"""
 
 from pathlib import Path
 
+from .embeddings import EmbeddingIndex, cosine
 from .extract import _prompt
 from .llm import LLM, LLMError
 from .notebook import Notebook
 from .pdf import render_pdf
 from .store import Vault
 
+QUESTIONS_SCHEMA = {
+    "title": "questions",
+    "type": "object",
+    "properties": {"questions": {"type": "array", "items": {"type": "string"}}},
+    "required": ["questions"],
+    "additionalProperties": False,
+}
 
-# How many ideas the synthesis sees per paper of research done, and the
-# floor below which a report has too little network context to be useful.
-IDEAS_PER_PAPER = 10
-MIN_IDEAS = 40
-MAX_IDEA_CHARS = 60_000   # keep the prompt inside a local model's context
+IDEAS_PER_SECTION = 40   # network context for one question, not the whole vault
+MAX_QUESTIONS = 5
 
 
 def synthesize(llm: LLM, vault: Vault, notebook: Notebook, run_dir: Path,
-               topic: str, mode: str, log=None, budget: int = 0) -> Path:
+               topic: str, mode: str, log=None, budget: int = 0,
+               index: EmbeddingIndex | None = None) -> Path:
     log = log or (lambda message: None)
     path = run_dir / "report.md"
-    # Scale the network context with the size of the research: a 30-paper run
-    # earns a richer report than a 3-paper one. Findings count papers already
-    # read, so a synthesis-only resume (--budget 0) keeps the scale it earned.
-    effort = max(budget, len(notebook.findings))
-    limit = max(MIN_IDEAS, effort * IDEAS_PER_PAPER)
-    ideas, shown = _idea_summary(vault, limit=limit)
-    log(f"synthesizing report from {len(notebook.findings)} finding(s) and "
-        f"{shown} of {len(vault.list_ideas())} idea(s) — one long call, "
-        f"may take minutes")
-    user = (
-        f"Topic: {topic}\nMode: {mode}\n\n"
-        f"Findings notebook:\n{notebook.as_text() or '(empty)'}\n\n"
-        f"Idea network (statement · type · domain · paper count · relations):\n{ideas}"
-    )
+    findings = notebook.as_text() or "(empty)"
+
     try:
-        # The synthesis is one big call where reasoning quality matters most —
-        # it may use a different model or request options than the small calls.
-        report = llm.chat(_prompt("synthesize"), user,
-                          model=getattr(llm, "report_model", None),
-                          extra_body=getattr(llm, "report_extra_body", None),
-                          timeout=getattr(llm, "report_timeout", None))
-        if not report.strip():
-            # A reasoning model that burns its whole token budget thinking
-            # returns empty content — that's a failure, not a report.
-            raise LLMError("synthesis returned no content (max_tokens too "
-                           "small for a reasoning model?)")
+        questions = _decompose(llm, topic, log)
+        log(f"synthesizing {len(questions)} section(s) from "
+            f"{len(notebook.findings)} finding(s) and "
+            f"{len(vault.list_ideas())} idea(s)")
+        sections = []
+        for i, question in enumerate(questions, 1):
+            ideas = _ideas_for(llm, vault, index, question)
+            log(f"  section {i}/{len(questions)}: {question[:70]}")
+            body = _call(llm, "section", (
+                f"Question: {question}\nMode: {mode}\n\n"
+                f"Findings notebook:\n{findings}\n\n"
+                f"Ideas closest to this question "
+                f"(statement · type · domain · papers):\n{ideas}"
+            ))
+            sections.append((question, body.strip()))
+
+        log("  summary and open questions")
+        joined = "\n\n".join(f"## {q}\n\n{b}" for q, b in sections)
+        head = _call(llm, "summarize_report",
+                     f"Topic: {topic}\n\nSections:\n\n{joined}").strip()
+        report = _assemble(topic, head, sections)
     except Exception as exc:  # never lose a run's findings to a bad last call
         note = (
             f"# {topic} — synthesis failed\n\n"
@@ -60,7 +75,8 @@ def synthesize(llm: LLM, vault: Vault, notebook: Notebook, run_dir: Path,
             return path
         path.write_text(note)
         return path
-    path.write_text(report if report.endswith("\n") else report + "\n")
+
+    path.write_text(report)
     try:  # a bad PDF render must never lose the markdown report
         pdf = render_pdf(path)
     except Exception as exc:
@@ -71,25 +87,72 @@ def synthesize(llm: LLM, vault: Vault, notebook: Notebook, run_dir: Path,
     return path
 
 
-def _idea_summary(vault: Vault, limit: int) -> tuple[str, int]:
-    """The most-cited ideas as one line each. Returns (text, how many)."""
-    rows = []
-    for slug in vault.list_ideas():
+def _call(llm: LLM, prompt: str, user: str) -> str:
+    """One synthesis call, with the report's model/options/timeout."""
+    return llm.chat(_prompt(prompt), user,
+                    model=getattr(llm, "report_model", None),
+                    extra_body=getattr(llm, "report_extra_body", None),
+                    timeout=getattr(llm, "report_timeout", None))
+
+
+def _decompose(llm: LLM, topic: str, log) -> list[str]:
+    """The distinct questions the topic asks (the topic itself as fallback)."""
+    try:
+        result = llm.chat_json(_prompt("decompose"), f"Topic: {topic}",
+                               QUESTIONS_SCHEMA)
+        questions = [q.strip() for q in result.get("questions", [])
+                     if isinstance(q, str) and q.strip()]
+    except (LLMError, ValueError) as exc:
+        log(f"  topic decomposition failed, writing one section: {exc}")
+        questions = []
+    return questions[:MAX_QUESTIONS] or [topic]
+
+
+def _ideas_for(llm: LLM, vault: Vault, index: EmbeddingIndex | None,
+               question: str) -> str:
+    """The vault's ideas nearest this question, as one line each.
+
+    With an index this is a real retrieval — each section gets the part of
+    the network that bears on it. Without one, fall back to the most-cited
+    ideas so the report still has context.
+    """
+    slugs = []
+    if index is not None:
+        try:
+            vector = llm.embed(question)
+            slugs = [key.removeprefix("idea:") for key, _ in
+                     index.search(vector, k=IDEAS_PER_SECTION, prefix="idea:")]
+        except Exception:
+            slugs = []
+    if not slugs:
+        ranked = sorted(vault.list_ideas(),
+                        key=lambda s: len(vault.load_idea(s)["papers"]),
+                        reverse=True)
+        slugs = ranked[:IDEAS_PER_SECTION]
+    lines = []
+    for slug in slugs:
+        if not vault.has_idea(slug):
+            continue
         idea = vault.load_idea(slug)
-        rows.append(
-            (
-                len(idea["papers"]),
-                f"- {idea['statement']} · {idea['type']} · {idea['domain']} · "
-                f"{len(idea['papers'])} papers · "
-                + (", ".join(f"{e['relation']}:{e['target']}" for e in idea["edges"][:4])
-                   or "no relations"),
-            )
-        )
-    rows.sort(key=lambda row: row[0], reverse=True)
-    lines, size = [], 0
-    for _, text in rows[:limit]:
-        if size + len(text) > MAX_IDEA_CHARS:  # context guard, whatever the limit
-            break
-        lines.append(text)
-        size += len(text) + 1
-    return ("\n".join(lines) or "(no ideas extracted)"), len(lines)
+        lines.append(f"- {idea['statement']} · {idea['type']} · "
+                     f"{idea['domain']} · {len(idea['papers'])} papers")
+    return "\n".join(lines) or "(no ideas extracted)"
+
+
+def _assemble(topic: str, head: str, sections: list[tuple[str, str]]) -> str:
+    """Stitch the parts into the report; sources are computed, not written."""
+    import re
+
+    title = topic[:1].upper() + topic[1:]
+    body = [f"## {question}\n\n{text}" for question, text in sections]
+    # The summary call emits "## Open questions"; those belong at the end.
+    head_text, _, open_questions = head.partition("## Open questions")
+    parts = [f"# {title}", "## Executive summary", head_text.strip()]
+    parts += body
+    if open_questions.strip():
+        parts += ["## Open questions", open_questions.strip()]
+    text = re.sub(r"\n{3,}", "\n\n", "\n\n".join(p for p in parts if p.strip()))
+    pmids = sorted(set(re.findall(r"PMID (\d+)", text)), key=int)
+    if pmids:
+        text += "\n\n## Sources\n\n" + "\n".join(f"PMID {p}" for p in pmids) + "\n"
+    return text if text.endswith("\n") else text + "\n"
