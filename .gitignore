@@ -7,3 +7,4 @@ venv/
 # local settings + agent output
 .env
 vault/
+vaults/
