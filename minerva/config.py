@@ -45,6 +45,10 @@ DEFAULT_CONFIG = {
         # NCBI asks that E-utilities requests carry a contact address; set
         # MINERVA_PUBMED_EMAIL (environment or .env) to yours.
         "email": "",
+        # Optional free NCBI API key (account.ncbi.nlm.nih.gov → Account
+        # settings → API Key Management). Raises E-utilities from 3 to 10
+        # requests/s; set MINERVA_PUBMED_API_KEY.
+        "api_key": "",
         "seed_results": 20,
         "expand_results": 8,
         "full_text": True,
@@ -78,6 +82,7 @@ ENV_OVERRIDES = {
     "MINERVA_LLM_EMBED_BASE_URL": ("llm", "embed_base_url"),
     "MINERVA_LLM_EMBED_MODEL": ("llm", "embed_model"),
     "MINERVA_PUBMED_EMAIL": ("pubmed", "email"),
+    "MINERVA_PUBMED_API_KEY": ("pubmed", "api_key"),
 }
 
 

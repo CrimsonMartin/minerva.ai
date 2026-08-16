@@ -202,6 +202,42 @@ def test_structured_output_schema_and_fallback():
     print("  structured output: schema sent, fallback ladder json_schema→json_object→none")
 
 
+def test_pubmed_api_key_is_sent_and_speeds_the_throttle():
+    """A configured key rides on every request and raises the rate limit."""
+    import importlib
+    importlib.reload(pubmed)   # other tests stub search/fetch; test the real ones
+    sent = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = "<PubmedArticleSet></PubmedArticleSet>"
+        def raise_for_status(self): pass
+        def json(self): return {"esearchresult": {"idlist": ["1"]}}
+
+    def fake_get(url, params, timeout):
+        sent[url.rsplit("/", 1)[-1]] = params
+        return FakeResponse()
+
+    real_get = pubmed.requests.get
+    pubmed.requests.get = fake_get
+    try:
+        pubmed.configure("")                       # anonymous
+        pubmed.search("x", email="a@b.c")
+        assert "api_key" not in sent["esearch.fcgi"], sent["esearch.fcgi"]
+        assert pubmed._ANON_INTERVAL > pubmed._KEYED_INTERVAL
+
+        pubmed.configure("KEY123")                 # keyed
+        pubmed.search("x", email="a@b.c")
+        pubmed.fetch(["1"], email="a@b.c")
+        assert sent["esearch.fcgi"]["api_key"] == "KEY123"
+        assert sent["efetch.fcgi"]["api_key"] == "KEY123"
+        assert sent["esearch.fcgi"]["email"] == "a@b.c"
+    finally:
+        pubmed.requests.get = real_get
+        pubmed.configure("")
+    print("  pubmed API key: sent on esearch/efetch, absent when unset")
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for test in tests:

@@ -132,6 +132,13 @@ Real environment variables win over `.env`. Everything else —
 thresholds, scoring weights, tree sizes — lives in `DEFAULT_CONFIG` in
 `minerva/config.py`. The vault is created on first use.
 
+NCBI asks for a contact address on E-utilities requests
+(`MINERVA_PUBMED_EMAIL`), and optionally accepts a free API key
+(`MINERVA_PUBMED_API_KEY`, from account.ncbi.nlm.nih.gov → Account
+settings → API Key Management). The key raises the rate limit from 3 to
+10 requests/s and minerva paces itself accordingly — worth having for
+long runs, where bursts of graph-driven searches otherwise draw 429s.
+
 One caveat: embedding vectors are only comparable within one model, so
 if you ever change the embed model, start a fresh vault.
 
