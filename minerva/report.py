@@ -5,6 +5,7 @@ from pathlib import Path
 from .extract import _prompt
 from .llm import LLM, LLMError
 from .notebook import Notebook
+from .pdf import render_pdf
 from .store import Vault
 
 
@@ -38,6 +39,13 @@ def synthesize(llm: LLM, vault: Vault, notebook: Notebook, run_dir: Path,
             f"notebook.md and the idea network is in the vault's ideas/ folder.\n"
         )
     path.write_text(report if report.endswith("\n") else report + "\n")
+    try:  # a bad PDF render must never lose the markdown report
+        pdf = render_pdf(path)
+    except Exception as exc:
+        log(f"report PDF failed (report.md is intact): {exc}")
+    else:
+        log(f"report PDF written: {pdf}" if pdf
+            else "report PDF skipped — `pip install markdown-pdf` to enable")
     return path
 
 

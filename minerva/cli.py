@@ -15,6 +15,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="minerva", description="Local-first deep research agent over PubMed."
     )
+    parser.add_argument("--vault", metavar="NAME", default="",
+                        help="vault to work in — its own subdirectory under vaults/ "
+                             "with an independent idea network (default: main)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     research = sub.add_parser("research", help="run a research session")
@@ -47,15 +50,23 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("ideas", help="list ideas in the vault by paper count")
 
+    sub.add_parser("vaults", help="list vaults with their paper and idea counts")
+
     graph = sub.add_parser("graph", help="render the idea network as a "
                                          "self-contained interactive HTML file")
-    graph.add_argument("-o", "--out", default="vault/graph.html",
-                       help="output path (default: vault/graph.html)")
+    graph.add_argument("-o", "--out", default="",
+                       help="output path (default: <vault>/graph.html)")
     graph.add_argument("--title", default="Idea Network",
                        help="page title (default: Idea Network)")
 
+    pdf = sub.add_parser("pdf", help="render markdown files (e.g. a run's report.md) "
+                                     "to PDF, written next to each file")
+    pdf.add_argument("files", nargs="+", metavar="FILE", help=".md paths")
+
     args = parser.parse_args(argv)
     config = load_config()
+    if args.vault:
+        config["vault"] = args.vault
 
     if args.command == "research":
         from pathlib import Path
@@ -106,7 +117,8 @@ def main(argv: list[str] | None = None) -> int:
         if not vault.list_ideas():
             print("(vault has no ideas yet — run a research session first)")
             return 1
-        path = render_graph_html(vault, Path(args.out), title=args.title)
+        out = Path(args.out) if args.out else vault.root / "graph.html"
+        path = render_graph_html(vault, out, title=args.title)
         print(f"graph written: {path}")
         return 0
 
@@ -123,6 +135,41 @@ def main(argv: list[str] | None = None) -> int:
         if not rows:
             print("(vault has no ideas yet — run a research session)")
         return 0
+
+    if args.command == "vaults":
+        from .config import vaults_root
+        from .store import Vault
+        vault_path(config)  # adopts a legacy top-level vault/ so it gets listed
+        root = vaults_root(config)
+        names = sorted(p.name for p in root.iterdir() if p.is_dir()) if root.exists() else []
+        if not names:
+            print("(no vaults yet — run a research session first)")
+            return 0
+        for name in names:
+            vault = Vault(root / name)
+            marker = "*" if name == config["vault"] else " "
+            print(f"{marker} {name}: {len(vault.list_papers())} papers, "
+                  f"{len(vault.list_ideas())} ideas")
+        return 0
+
+    if args.command == "pdf":
+        from pathlib import Path
+
+        from .pdf import render_pdf
+        failures = 0
+        for file in args.files:
+            path = Path(file)
+            if not path.is_file():
+                print(f"{file}: not found")
+                failures += 1
+                continue
+            out = render_pdf(path)
+            if out is None:
+                print("markdown-pdf is not installed — `pip install markdown-pdf` "
+                      "to enable PDF rendering")
+                return 1
+            print(f"{file} → {out}")
+        return 1 if failures else 0
 
     return 1
 
