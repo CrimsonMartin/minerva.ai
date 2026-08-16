@@ -9,13 +9,26 @@ from .pdf import render_pdf
 from .store import Vault
 
 
+# How many ideas the synthesis sees per paper of research done, and the
+# floor below which a report has too little network context to be useful.
+IDEAS_PER_PAPER = 10
+MIN_IDEAS = 40
+MAX_IDEA_CHARS = 60_000   # keep the prompt inside a local model's context
+
+
 def synthesize(llm: LLM, vault: Vault, notebook: Notebook, run_dir: Path,
-               topic: str, mode: str, log=None) -> Path:
+               topic: str, mode: str, log=None, budget: int = 0) -> Path:
     log = log or (lambda message: None)
     path = run_dir / "report.md"
-    ideas = _idea_summary(vault, limit=40)
+    # Scale the network context with the size of the research: a 30-paper run
+    # earns a richer report than a 3-paper one. Findings count papers already
+    # read, so a synthesis-only resume (--budget 0) keeps the scale it earned.
+    effort = max(budget, len(notebook.findings))
+    limit = max(MIN_IDEAS, effort * IDEAS_PER_PAPER)
+    ideas, shown = _idea_summary(vault, limit=limit)
     log(f"synthesizing report from {len(notebook.findings)} finding(s) and "
-        f"{len(vault.list_ideas())} idea(s) — one long call, may take minutes")
+        f"{shown} of {len(vault.list_ideas())} idea(s) — one long call, "
+        f"may take minutes")
     user = (
         f"Topic: {topic}\nMode: {mode}\n\n"
         f"Findings notebook:\n{notebook.as_text() or '(empty)'}\n\n"
@@ -49,7 +62,8 @@ def synthesize(llm: LLM, vault: Vault, notebook: Notebook, run_dir: Path,
     return path
 
 
-def _idea_summary(vault: Vault, limit: int) -> str:
+def _idea_summary(vault: Vault, limit: int) -> tuple[str, int]:
+    """The most-cited ideas as one line each. Returns (text, how many)."""
     rows = []
     for slug in vault.list_ideas():
         idea = vault.load_idea(slug)
@@ -63,4 +77,10 @@ def _idea_summary(vault: Vault, limit: int) -> str:
             )
         )
     rows.sort(key=lambda row: row[0], reverse=True)
-    return "\n".join(text for _, text in rows[:limit]) or "(no ideas extracted)"
+    lines, size = [], 0
+    for _, text in rows[:limit]:
+        if size + len(text) > MAX_IDEA_CHARS:  # context guard, whatever the limit
+            break
+        lines.append(text)
+        size += len(text) + 1
+    return ("\n".join(lines) or "(no ideas extracted)"), len(lines)
