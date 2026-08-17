@@ -28,6 +28,7 @@ class LLM:
         self.temperature = llm["temperature"]
         self.max_tokens = llm["max_tokens"]
         self.timeout = llm["timeout_seconds"]
+        self.report_timeout = llm.get("report_timeout_seconds") or self.timeout
         self.session = requests.Session()
         self.session.headers["Authorization"] = f"Bearer {llm['api_key']}"
         self._local_embedder = None
@@ -35,7 +36,8 @@ class LLM:
     # ------------------------------------------------------------- chat
 
     def chat(self, system: str, user: str, response_format: dict | None = None,
-             model: str | None = None, extra_body: dict | None = None) -> str:
+             model: str | None = None, extra_body: dict | None = None,
+             timeout: float | None = None) -> str:
         body = {
             "model": model or self.chat_model,
             "temperature": self.temperature,
@@ -51,15 +53,17 @@ class LLM:
         if response_format:
             body["response_format"] = response_format
         response = self.session.post(
-            f"{self.base_url}/chat/completions", json=body, timeout=self.timeout
+            f"{self.base_url}/chat/completions", json=body,
+            timeout=timeout or self.timeout
         )
         if response.status_code == 400 and response_format:
             # Server rejected the format constraint — degrade one rung:
             # json_schema -> json_object -> prompt-only JSON.
             if response_format.get("type") == "json_schema":
                 return self.chat(system, user, {"type": "json_object"},
-                                 model=model, extra_body=extra_body)
-            return self.chat(system, user, model=model, extra_body=extra_body)
+                                 model=model, extra_body=extra_body, timeout=timeout)
+            return self.chat(system, user, model=model, extra_body=extra_body,
+                             timeout=timeout)
         if response.status_code != 200:
             raise LLMError(f"chat failed ({response.status_code}): {response.text[:500]}")
         return response.json()["choices"][0]["message"]["content"]
